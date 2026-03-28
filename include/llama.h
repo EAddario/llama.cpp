@@ -385,7 +385,7 @@ extern "C" {
         enum ggml_type type;
     };
 
-    struct llama_imatrix_data {
+    struct llama_model_imatrix_data {
         const char * name;
         const float * data;
         size_t size;
@@ -405,7 +405,7 @@ extern "C" {
         bool dry_run;                                               // calculate and show the final quantization size without performing quantization
         const struct llama_imatrix_data * imatrix;                  // pointer to importance matrix data
         const struct llama_model_kv_override * kv_overrides;        // pointer to kv overrides
-        const struct llama_model_tensor_override * tensor_types;    // pointer to tensor overrides
+        const struct llama_model_tensor_override * tt_overrides;    // pointer to tensor overrides
         const int32_t * prune_layers;                               // pointer to layer indices to prune
     } llama_model_quantize_params;
 
