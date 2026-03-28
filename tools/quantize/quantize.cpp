@@ -581,7 +581,7 @@ int main(int argc, char ** argv) {
     std::unordered_map<std::string, std::vector<float>> imatrix_data;
     int m_last_call = prepare_imatrix(imatrix_file, imatrix_datasets, included_weights, excluded_weights, imatrix_data);
 
-    std::vector<llama_imatrix_data> i_data;
+    std::vector<llama_model_imatrix_data> i_data;
     std::vector<llama_model_tensor_override> t_override;
     if (!imatrix_data.empty()) {
         i_data.reserve(imatrix_data.size() + 1);
@@ -633,7 +633,7 @@ int main(int argc, char ** argv) {
             t_override.push_back({tt.name.c_str(), tt.type});
         }
         t_override.push_back({nullptr, GGML_TYPE_COUNT});  // array terminator
-        params.tensor_types = t_override.data();
+        params.tt_overrides = t_override.data();
     }
     if (!prune_layers.empty()) {
         prune_layers.push_back(-1);  // array terminator

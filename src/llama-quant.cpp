@@ -187,8 +187,8 @@ struct quantize_state_impl {
         model(model), params(params)
     {
         // compile regex patterns once - they are expensive
-        if (params->tensor_types) {
-            for (const auto * p = params->tensor_types; p->pattern != nullptr; p++) {
+        if (params->tt_overrides) {
+            for (const auto * p = params->tt_overrides; p->pattern != nullptr; p++) {
                 tensor_type_patterns.emplace_back(std::regex(p->pattern), p->type);
             }
         }
@@ -875,7 +875,7 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
     std::unordered_map<std::string, std::vector<float>> i_data;
     const std::unordered_map<std::string, std::vector<float>> * imatrix_data = nullptr;
     if (params->imatrix) {
-        for (const llama_imatrix_data * p = params->imatrix; p->name != nullptr; p++) {
+        for (const llama_model_imatrix_data * p = params->imatrix; p->name != nullptr; p++) {
             i_data.emplace(p->name, std::vector<float>(p->data, p->data + p->size));
         }
         imatrix_data = & i_data;
