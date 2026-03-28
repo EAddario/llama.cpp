@@ -652,6 +652,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
     const std::unordered_map<std::string, std::vector<float>> * values_data,
     const std::unordered_map<std::string, std::vector<float>> * activations_data,
     const std::unordered_map<std::string, std::vector<float>> * statistics_data,
+    const std::unordered_map<std::string, ggml_type> * locked_tensors,
     int nthread
 ) {
     bpw_stop.store(false, std::memory_order_relaxed);
@@ -1669,13 +1670,55 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
     if (all_tensors.empty()) { return {}; }
 
     // Compute total elements across all tensors and bytes for non-quantizable tensors
-    size_t nq_elements = 0;
+    size_t n_elements = 0;
     size_t nq_bytes = 0;
     for (const auto * it : tensors) {
         const ggml_tensor * tensor = it->tensor;
-        nq_elements += (size_t)ggml_nelements(tensor);
+        n_elements += (size_t)ggml_nelements(tensor);
         if (!can_quantize(tensor)) { nq_bytes += ggml_nbytes(tensor); }
     }
+
+    // Exclude user defined tensors (--tensor-type) from the Lagrangian optimization (courtesy of https://github.com/AesSedai)
+    std::vector<type_choice> pinned_tensors;
+    if (locked_tensors && !locked_tensors->empty()) {
+        std::vector<type_choice> variable_tensors;
+        variable_tensors.reserve(all_tensors.size());
+        for (auto & tn : all_tensors) {
+            const std::string name = ggml_get_name(tn.w->tensor);
+            auto lt = locked_tensors->find(name);
+            if (lt != locked_tensors->end()) {
+                const ggml_type mc = make_compatible(tn.w->tensor, lt->second);
+                int idx = -1;
+                for (int j = 0; j < (int)tn.candidates.size(); ++j) {
+                    if (tn.candidates[j].type == mc) {
+                        idx = j;
+                        break;
+                    }
+                }
+
+                if (idx == -1) {
+                    // Pinned type was pareto-pruned or not evaluated; add with unknown error
+                    type_scores ts;
+                    ts.type = mc;
+                    ts.bpw = (float)tensor_bpw(tn.w->tensor, mc);
+                    ts.bytes = tensor_bytes(tn.w->tensor, mc);
+                    ts.error = std::numeric_limits<float>::quiet_NaN();
+                    tn.candidates.push_back(ts);
+                    idx = (int)tn.candidates.size() - 1;
+                }
+
+                tn.choice = idx;
+                pinned_tensors.push_back(std::move(tn));
+            } else {
+                variable_tensors.push_back(std::move(tn));
+            }
+        }
+
+        all_tensors = std::move(variable_tensors);
+    }
+
+    size_t pinned_bytes = 0;
+    for (const auto & tc : pinned_tensors) { pinned_bytes += tc.candidates[tc.choice].bytes; }
 
     size_t min_total_bytes = 0;
     size_t max_total_bytes = 0;
@@ -1684,39 +1727,79 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         max_total_bytes += tn.candidates.back().bytes;
     }
 
+    size_t total_budget_bytes = 0;
     size_t budget_bytes = 0;
-
     if (qs.params->target_size != -1) {
         const auto metadata_size = gguf_get_meta_size(ml.metadata);
-        // Budget for quantizable weights = target - metadata - Non-Quantizable Weights
-        int64_t available = (int64_t)qs.params->target_size - (int64_t)metadata_size - (int64_t)nq_bytes;
-
-        // Clamp to the absolute minimum possible size for the variable tensors
-        if (available < (int64_t)min_total_bytes) {
-            LLAMA_LOG_WARN("%s: requested file size %zu is smaller than minimum possible model size (~%zu), clamping to minimum.\n",
-                func, (size_t)qs.params->target_size, min_total_bytes + nq_bytes + metadata_size);
+        const size_t total_fixed_bytes = metadata_size + nq_bytes + pinned_bytes;
+        total_budget_bytes = (size_t)qs.params->target_size;
+        if (total_budget_bytes < total_fixed_bytes + min_total_bytes) {
+            LLAMA_LOG_WARN("%s: requested file size %zu is smaller than minimum possible model size (~%zu bytes); clamping to minimum\n",
+            func, (size_t)qs.params->target_size, total_fixed_bytes + min_total_bytes);
             budget_bytes = min_total_bytes;
         } else {
-            budget_bytes = (size_t)available;
+            budget_bytes = total_budget_bytes - total_fixed_bytes;
         }
     } else {
-        const double target_bpw = qs.params->target_bpw;
-        size_t target_total_bytes = std::llround(target_bpw * (double)nq_elements / 8.0);
-        budget_bytes = target_total_bytes >= nq_bytes ? target_total_bytes - nq_bytes : min_total_bytes;
+        total_budget_bytes = std::llround(qs.params->target_bpw * (double)n_elements / 8.0);
+        const size_t total_fixed_bytes = nq_bytes + pinned_bytes;
+        if (total_budget_bytes < total_fixed_bytes + min_total_bytes) {
+            LLAMA_LOG_WARN("%s: requested BPW %.4f is smaller than minimum possible model size (~%.4f BPW); clamping to minimum\n",
+                func, qs.params->target_bpw, (double)(total_fixed_bytes + min_total_bytes) * 8.0 / n_elements);
+            budget_bytes = min_total_bytes;
+        } else {
+            budget_bytes = total_budget_bytes - total_fixed_bytes;
+        }
+    }
+
+    if (locked_tensors && pinned_bytes >= total_budget_bytes) {
+        LLAMA_LOG_WARN("%s: pinned tensors alone exceed the target budget; ignoring budget and using pinned tensors\n", func);
+        budget_bytes = min_total_bytes;
+    } else if (locked_tensors && pinned_bytes >= total_budget_bytes * 0.33) {
+        LLAMA_LOG_WARN("%s: pinned tensors will consume over 1/3 of the target budget; optimization potential may be limited\n", func);
     }
 
     // Get the types' override
     auto build_mix = [&]() -> std::unordered_map<std::string, ggml_type> {
-        std::unordered_map<std::string, ggml_type> mix;
+        std::unordered_map<std::string, ggml_type> quant_mix;
+        std::unordered_map<std::string, const type_choice *> optimized;
+        std::unordered_map<std::string, const type_choice *> pinned;
+        optimized.reserve(all_tensors.size());
+        for (const auto & tn : all_tensors) { optimized[ggml_get_name(tn.w->tensor)] = & tn; }
+        pinned.reserve(pinned_tensors.size());
+        for (const auto & tn : pinned_tensors) { pinned[ggml_get_name(tn.w->tensor)] = & tn; }
+
         LLAMA_LOG_INFO("\t%s: tensor quantization mix:\n", func);
-        for (const auto & tn : all_tensors) {
-            LLAMA_LOG_INFO("\t%s: %45s %s\t%8s, \t%1.4f bpw,\terror: %.4f\n",
-                func, ggml_get_name(tn.w->tensor), tn.important ? "⬆︎" : "-", ggml_type_name(tn.candidates[tn.choice].type), tn.candidates[tn.choice].bpw,
-                tn.candidates[tn.choice].error);
-            mix[ggml_get_name(tn.w->tensor)] = tn.candidates[tn.choice].type;
+        for (const auto * tn : tensors) {
+            const std::string name = ggml_get_name(tn->tensor);
+
+            auto pd = pinned.find(name);
+            bool is_pinned = pd != pinned.end();
+            const auto * tn_ptr = is_pinned ? pd->second : nullptr;
+
+            if (!tn_ptr) {
+                auto opt = optimized.find(name);
+                if (opt != optimized.end()) { tn_ptr = opt->second; }
+            }
+
+            if (tn_ptr) {
+                const auto & tp = * tn_ptr;
+                const auto & choice = tp.candidates[tp.choice];
+
+                LLAMA_LOG_INFO("\t%s: %45s %s\t%8s, \t%1.4f bpw,\terror: %.4f%s\n",
+                    func,
+                    name.c_str(),
+                    tp.important ? "⬆︎" : "-",
+                    ggml_type_name(choice.type),
+                    choice.bpw,
+                    choice.error,
+                    is_pinned ? " (pinned)" : "");
+
+                quant_mix[name] = choice.type;
+            }
         }
 
-        return mix;
+        return quant_mix;
     };
 
     if (budget_bytes <= min_total_bytes) {
@@ -2200,8 +2283,8 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
     std::unordered_map<std::string, ggml_type> bpw_overrides = {};
     if ((params->target_bpw != -1.0f || params->target_size != -1) && !params->only_copy) {
         if (params->imatrix) {
-            if (params->tensor_types || params->pure) {
-                LLAMA_LOG_WARN("%s: --target-bpw/--target-size specified, ignoring all other type overrides\n", __func__);
+            if (params->pure) {
+                LLAMA_LOG_WARN("%s: --target-bpw/--target-size specified with --pure, ignoring --pure\n", __func__);
             }
             if (params->importance_pct != 0.0f) {
                 LLAMA_LOG_INFO("%s: marking up to %.2f%% of tensors as important\n", __func__, params->importance_pct);
@@ -2212,8 +2295,29 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
                 LLAMA_LOG_INFO("%s: computing tensor quantization mix to achieve %.4f bpw\n", __func__, params->target_bpw);
             }
 
+            // Build locked tensor type map from --tensor-type patterns
+            std::unordered_map<std::string, ggml_type> locked_tensors;
+            if (!qs.tensor_type_patterns.empty()) {
+                for (size_t i = 0; i < tensors.size(); ++i) {
+                    if (!metadata[i].allows_quantization) { continue; }
+                    const std::string name = ggml_get_name(tensors[i]->tensor);
+                    for (const auto & [pattern, qtype] : qs.tensor_type_patterns) {
+                        if (std::regex_search(name, pattern)) {
+                            locked_tensors[name] = qtype;
+                            break;
+                        }
+                    }
+                }
+
+                if (!locked_tensors.empty()) {
+                    LLAMA_LOG_INFO("%s: locking %zu tensors to user-specified types, allocating remaining budget to the rest\n",
+                        __func__, locked_tensors.size());
+                }
+            }
+
             // get quantization type overrides targeting a given bits per weight budget
-            bpw_overrides = target_bpw_type(ml, qs, tensors, mapped, values_data, activations_data, statistics_data, nthread);
+            const auto * lt = locked_tensors.empty() ? nullptr : & locked_tensors;
+            bpw_overrides = target_bpw_type(ml, qs, tensors, mapped, values_data, activations_data, statistics_data, lt, nthread);
             for (size_t i = 0; i < tensors.size(); ++i) {
                 const std::string name = ggml_get_name(tensors[i]->tensor);
                 auto it = bpw_overrides.find(name);
