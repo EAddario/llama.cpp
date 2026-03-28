@@ -119,7 +119,9 @@ static void process_tensor_name(const std::string & input, std::string & layer, 
     std::istringstream stream(input);
     std::string item;
 
-    while (std::getline(stream, item, '.')) { name.push_back(item); }
+    while (std::getline(stream, item, '.')) {
+        name.push_back(item);
+    }
     for (size_t i = 0; i < name.size(); ++i) {
         if (name[i] == "blk" && i + 1 < name.size()) {
             layer = name[i + 1];
@@ -131,7 +133,8 @@ static void process_tensor_name(const std::string & input, std::string & layer, 
             for (size_t j = 0; j < name.size(); ++j) {
                 if (name[j] == "blk") {
                     j+=2;
-                    continue; }
+                    continue;
+                }
                 if (j == i) { break; }
                 if (!tensor.empty()) { tensor += "."; }
                 tensor += name[j];
