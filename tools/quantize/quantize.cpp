@@ -173,7 +173,8 @@ static void usage(const char * executable) {
     printf("                                      save the bpw computations to <model name>-<model hash>.bpw_state\n\n");
     printf("  --state-file [filename]\n");
     printf("                                      file name to use/save; if none is provided, the default name will be used\n\n");
-    printf("note: --include-weights and --exclude-weights cannot be used together\n\n");
+    printf("note: --include-weights and --exclude-weights cannot be used together\n");
+    printf("      --target-bpw and --target-size cannot be used together\n\n");
     printf("-----------------------------------------------------------------------------\n");
     printf(" allowed quantization types\n");
     printf("-----------------------------------------------------------------------------\n\n");
@@ -734,7 +735,8 @@ int main(int argc, char ** argv) {
             if (arg_idx + 1 < argc && argv[arg_idx + 1][0] != '-') {
                 params.state_file = argv[++arg_idx];
             } else {
-                params.state_file = (void *) "";
+                static char empty[] = "";
+                params.state_file = empty;
             }
         } else if (strcmp(argv[arg_idx], "--prune-layers") == 0) {
             if (arg_idx == argc-1 || !parse_layer_prune(argv[++arg_idx], prune_layers)) {
@@ -780,6 +782,9 @@ int main(int argc, char ** argv) {
         usage(argv[0]);
     }
     if (!included_weights.empty() && !excluded_weights.empty()) {
+        usage(argv[0]);
+    }
+    if (target_bpw != -1.0f && target_size != -1) {
         usage(argv[0]);
     }
 
