@@ -962,6 +962,14 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
                name.find("attn_q_b.weight") != std::string::npos;
     };
 
+    // Inner Product TurboQuant - Experimental PoC
+    auto is_inner_product_sensitive = [](const std::string & name) -> bool {
+        return name.find("attn_q.weight") != std::string::npos ||
+               name.find("attn_k.weight") != std::string::npos ||
+               name.find("attn_output.weight") != std::string::npos ||
+               name.find("ffn_down.weight") != std::string::npos;
+    };
+
     // Estimate error for a given type using a sampled subset of rows
     auto compute_quant_error = [&](
         const ggml_tensor * t,
@@ -1576,11 +1584,23 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
                 ptr_ref_mse
             );
 
+            // TurboQuant bias adjustment for inner-product sensitive tensors - Experimental PoC
+            double error = qe.error;
+            if (is_inner_product_sensitive(remapped_name)) {
+                const float bpw = (float)ggml_type_size(vt) * 8.0f / (float)ggml_blck_size(vt);
+                if (bpw < 4.5f) {
+                    // Apply a decaying penalty factor derived from the TurboQuant inner-product distortion bound
+                    float bias_factor = (M_PI / 2.0f);
+                    float decay = std::max(1.0f, 4.0f - bpw); // stronger penalty for 1-bit and 2-bit
+                    error *= bias_factor * decay;
+                }
+            }
+
             type_scores candidate;
             candidate.type = vt;
             candidate.bpw = (float)tensor_bpw(tensor, vt);
             candidate.bytes = tensor_bytes(tensor, vt);
-            candidate.error = qe.error * scaling_factor;
+            candidate.error = error * scaling_factor;
             candidate.mse = qe.mse;
             candidate.wce = qe.wce;
             evaluations.push_back(candidate);
