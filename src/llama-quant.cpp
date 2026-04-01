@@ -962,7 +962,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
                name.find("attn_q_b.weight") != std::string::npos;
     };
 
-    // Inner Product TurboQuant - Experimental PoC
+    // TurboQuant Inner Product - Experimental PoC
     auto is_inner_product_sensitive = [](const std::string & name) -> bool {
         return name.find("attn_q.weight") != std::string::npos ||
                name.find("attn_k.weight") != std::string::npos ||
@@ -1341,6 +1341,37 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         cnif(wce_scores, 0.25f);
     }
 
+    // TurboQuant outlier mitigation (simulate rotation) - Experimental PoC
+    auto outlier_smoothing = [&](const std::vector<float>& src, std::vector<float>& dst, const int64_t n_rows, const int64_t len) {
+        dst.resize(src.size());
+        for (int64_t r = 0; r < n_rows; ++r) {
+            const float* src_row = src.data() + r * len;
+            float* dst_row = dst.data() + r * len;
+
+            // Fast variance estimation
+            float sum = 0.0f;
+            float sq_sum = 0.0f;
+            const int64_t limit = std::min<int64_t>(len, 256);
+            for (int64_t i = 0; i < limit; ++i) {
+                sum += src_row[i];
+                sq_sum += src_row[i] * src_row[i];
+            }
+
+            const float mean = sum / limit;
+            float variance = sq_sum / limit - mean * mean;
+            const float std_dev = std::sqrt(std::max(0.0f, variance));
+
+            // Clip at 4 standard deviations to simulate the effect of rotation spreading the outlier energy
+            float clip_val = 4.0f * std_dev;
+
+            if (clip_val > 1e-4f) {
+                for (int64_t i = 0; i < len; ++i) { dst_row[i] = std::clamp(src_row[i], mean - clip_val, mean + clip_val); }
+            } else {
+                std::memcpy(dst_row, src_row, len * sizeof(float));
+            }
+        }
+    };
+
     // Parallelize tensor processing (courtesy of https://github.com/ddh0)
     auto process_tensor = [&](
         const llama_model_loader::llama_tensor_weight * tw,
@@ -1435,6 +1466,10 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
                 rows_sample[slice] = count;
             }
         }
+
+        std::vector<float> smoothed_sample;
+        bool is_outlier_heavy = remapped_name.find("ffn_down") != std::string::npos;
+        if (is_outlier_heavy) { outlier_smoothing(f32_sample, smoothed_sample, rows_to_sample * ne2, n_per_row); }
 
         // Prepare side data
         auto get_side_data = [&](const auto * m) {
@@ -1570,11 +1605,13 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
             if (bpw_stop.load(std::memory_order_relaxed)) { return std::nullopt; }
             const wce_cache * ptr_ref_wce = use_wce && !ref_wce.row_sq_norm.empty() ? & ref_wce : nullptr;
             const mse_cache * ptr_ref_mse = !use_wce && !ref_mse.row_sq_norm.empty() ? & ref_mse : nullptr;
+            const float bpw = (float)ggml_type_size(vt) * 8.0f / (float)ggml_blck_size(vt);
+            const std::vector<float>& eval_sample = is_outlier_heavy && bpw < 3.0f ? smoothed_sample : f32_sample;
 
             quant_error qe = compute_quant_error(
                 tensor,
                 vt,
-                f32_sample,
+                eval_sample,
                 rows_sample,
                 val_vec_ptr,
                 act_vec_ptr,
@@ -1587,12 +1624,11 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
             // TurboQuant bias adjustment for inner-product sensitive tensors - Experimental PoC
             double error = qe.error;
             if (is_inner_product_sensitive(remapped_name)) {
-                const float bpw = (float)ggml_type_size(vt) * 8.0f / (float)ggml_blck_size(vt);
                 if (bpw < 4.5f) {
-                    // Apply a decaying penalty factor derived from the TurboQuant inner-product distortion bound
-                    float bias_factor = (M_PI / 2.0f);
+                    // Apply a decaying factor derived from the TurboQuant inner-product distortion bound
+                    float unbias_factor = M_PI / 2.0f;
                     float decay = std::max(1.0f, 4.0f - bpw); // stronger penalty for 1-bit and 2-bit
-                    error *= bias_factor * decay;
+                    error *= unbias_factor * decay;
                 }
             }
 
