@@ -168,8 +168,6 @@ static void usage(const char * executable) {
     printf("                                      target a file size; must be a positive number\n");
     printf("                                      advanced option to automatically select quantization types to achieve a total file size\n");
     printf("                                      allowed units: b, k|kib, m|mib, g|gib, t|tib; defaults to b (bytes) if none is provided\n\n");
-    printf("  --save-state\n");
-    printf("                                      save the bpw computations to <model name>-<model hash>.bpw_state\n\n");
     printf("  --state-file [filename]\n");
     printf("                                      file name to use/save; if none is provided, the default name will be used\n\n");
     printf("note: --include-weights and --exclude-weights cannot be used together\n");
@@ -702,8 +700,6 @@ int main(int argc, char ** argv) {
             if (arg_idx == argc-1 || !parse_target_size(argv[++arg_idx], target_size)) {
                 usage(argv[0]);
             }
-        } else if (strcmp(argv[arg_idx], "--save-state") == 0) {
-            params.save_state = true;
         } else if (strcmp(argv[arg_idx], "--state-file") == 0) {
             if (arg_idx + 1 < argc && argv[arg_idx + 1][0] != '-') {
                 params.state_file = argv[++arg_idx];

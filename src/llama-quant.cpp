@@ -816,7 +816,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
 
             if (filename[0] == '\0') { is_valid = true; }
             else if (std::ifstream(filename, std::ios::binary).good()) { is_valid = true; }
-            else if (qs.params->save_state) {
+            else {
                 std::ofstream ofs(filename, std::ios::binary | std::ios::app);
                 if (ofs.is_open()) {
                     is_valid = true;
@@ -933,8 +933,13 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
     // Check for user interrupt and save progress
     auto check_signal_handler = [&](const std::vector<type_choice> & all_tensors) {
         if (bpw_stop.load(std::memory_order_relaxed)) {
-            LLAMA_LOG_INFO("\n%s: interrupted, saving progress for %lu tensors to %s\n", func, all_tensors.size(), checkpoint_file.c_str());
-            save_state(all_tensors);
+            if (qs.params->state_file) {
+                LLAMA_LOG_INFO("\n\t%s: interrupted, saving progress for %lu tensors to %s\n", func, all_tensors.size(), checkpoint_file.c_str());
+                save_state(all_tensors);
+            } else {
+                LLAMA_LOG_INFO("\n\t%s: interrupted\n", func);
+            }
+
             throw std::runtime_error("user terminated the process");
         }
     };
@@ -1733,7 +1738,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
     }
 
     check_signal_handler(all_tensors);
-    if (qs.params->save_state) { save_state(all_tensors); }
+    if (qs.params->state_file) { save_state(all_tensors); }
     if (all_tensors.empty()) { return {}; }
 
     // Compute total elements across all tensors and bytes for non-quantizable tensors
@@ -2576,7 +2581,6 @@ llama_model_quantize_params llama_model_quantize_default_params() {
         /*.prune_layers                =*/ nullptr,
         /*.target_bpw                  =*/ -1.0f,
         /*.target_size                 =*/ -1,
-        /*.save_state                  =*/ false,
         /*.state_file                  =*/ nullptr
     };
 

@@ -411,7 +411,6 @@ extern "C" {
         const int32_t * prune_layers;                               // pointer to layer indices to prune
         float target_bpw;                                           // target bits per weight (bpw)
         int64_t target_size;                                        // target file size in bytes
-        bool save_state;                                            // keep bpw state file
         const char * state_file;                                    // pointer to bpw state file
     } llama_model_quantize_params;
 
