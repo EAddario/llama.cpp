@@ -1,6 +1,6 @@
 #include "common.h"
-#include "llama.h"
 #include "gguf.h"
+#include "llama.h"
 
 #include <algorithm>
 #include <cctype>
@@ -15,8 +15,7 @@
 #include <unordered_map>
 #include <vector>
 
-// result of parsing --tensor-type option
-// (changes to this struct must be reflected in src/llama-quant.cpp)
+// changes to this struct must also be reflected in src/llama-quant.cpp
 struct tensor_type_option {
     std::string name;
     ggml_type type = GGML_TYPE_COUNT;
@@ -671,7 +670,6 @@ static const char * get_ftype(const float bpw) {
 
 int main(int argc, char ** argv) {
     std::setlocale(LC_NUMERIC, "C");
-
     if (argc < 3) {
         usage(argv[0]);
     }
@@ -793,8 +791,15 @@ int main(int argc, char ** argv) {
     std::unordered_map<std::string, std::vector<float>> activations_data;
     std::unordered_map<std::string, std::vector<float>> statistics_data;
     int m_last_call = prepare_imatrix(imatrix_file, imatrix_datasets, included_weights, excluded_weights, values_data, activations_data, statistics_data);
+
+    std::vector<llama_model_imatrix_data> imtx;
+    std::vector<llama_model_tensor_override> tovr;
+
     if (!values_data.empty()) {
-        params.imatrix = &values_data;
+        imtx.reserve(values_data.size() + 1);
+        for (const auto & kv : values_data) { imtx.push_back({kv.first.c_str(), kv.second.data(), kv.second.size()}); }
+        imtx.push_back({nullptr, nullptr, 0});  // array terminator
+        params.imatrix = imtx.data();
         {
             llama_model_kv_override kvo;
             std::strcpy(kvo.key, LLM_KV_QUANTIZE_IMATRIX_FILE);
@@ -812,7 +817,6 @@ int main(int argc, char ** argv) {
             kvo.val_str[127] = '\0';
             kv_overrides.emplace_back(std::move(kvo));
         }
-
         {
             llama_model_kv_override kvo;
             std::strcpy(kvo.key, LLM_KV_QUANTIZE_IMATRIX_N_ENTRIES);
@@ -820,7 +824,6 @@ int main(int argc, char ** argv) {
             kvo.val_i64 = values_data.size();
             kv_overrides.emplace_back(std::move(kvo));
         }
-
         if (m_last_call > 0) {
             llama_model_kv_override kvo;
             std::strcpy(kvo.key, LLM_KV_QUANTIZE_IMATRIX_N_CHUNKS);
@@ -838,13 +841,17 @@ int main(int argc, char ** argv) {
     if (!kv_overrides.empty()) {
         kv_overrides.emplace_back();
         kv_overrides.back().key[0] = 0;
-        params.kv_overrides = &kv_overrides;
+        params.kv_overrides = kv_overrides.data();
     }
     if (!tensor_type_opts.empty()) {
-        params.tensor_types = &tensor_type_opts;
+        tovr.reserve(tensor_type_opts.size() + 1);
+        for (const auto & tt : tensor_type_opts) { tovr.push_back({tt.name.c_str(), tt.type}); }
+        tovr.push_back({nullptr, GGML_TYPE_COUNT});  // array terminator
+        params.tt_overrides = tovr.data();
     }
     if (!prune_layers.empty()) {
-        params.prune_layers = &prune_layers;
+        prune_layers.push_back(-1);  // array terminator
+        params.prune_layers = prune_layers.data();
     }
     if (target_bpw != -1.0f) {
         params.target_bpw = target_bpw;
