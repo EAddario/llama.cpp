@@ -1416,7 +1416,11 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         }
         {
             std::lock_guard<std::mutex> lock(loader_mutex);
+            // Temporarily revert to the original name to locate the weight
+            if (qs.params->prune_layers) { ggml_set_name(tensor, remap_imatrix(tensor->name, mapped).c_str()); }
             ml.load_data_for(tensor);
+            // Restore the remapped name for the final quantized output
+            if (qs.params->prune_layers) { ggml_set_name(tensor, name.c_str()); }
         }
 
         // Sampling
@@ -2431,9 +2435,7 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
     };
 
     // no output file for --dry-run
-    if (!params->dry_run) {
-        new_ofstream(0);
-    }
+    if (!params->dry_run) { new_ofstream(0); }
 
     // main loop: iterate over all weights
     for (size_t i = 0; i < tensors.size(); ++i) {
@@ -2453,7 +2455,13 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
                 tensor->data = read_data.data();
             }
 
+            // Temporarily revert to the original name to locate the weight
+            if (params->prune_layers) { ggml_set_name(tensor, remap_imatrix(tensor->name, mapped).c_str()); }
+
             ml.load_data_for(tensor);
+
+            // Restore the remapped name for the final quantized output
+            if (params->prune_layers) { ggml_set_name(tensor, tm.name.c_str()); }
         }
 
         LLAMA_LOG_INFO("[%4d/%4d] %-36s - [%s], type = %6s, ",
