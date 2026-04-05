@@ -965,12 +965,17 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
                name.find("attn_q_b.weight") != std::string::npos;
     };
 
-    // TurboQuant Inner Product - Experimental PoC
+    // Tensors sensitive to distortion in dot-product/inner-product calculations (TurboQuant)
     auto is_inner_product_sensitive = [](const std::string & name) -> bool {
-        return name.find("attn_q.weight") != std::string::npos ||
-               name.find("attn_k.weight") != std::string::npos ||
-               name.find("attn_output.weight") != std::string::npos ||
-               name.find("ffn_down.weight") != std::string::npos;
+        // Query/Key and variants (fused, latent, and enc/dec)
+        if (name.find("attn_q") != std::string::npos || name.find("attn_k") != std::string::npos) { return true; }
+
+        // Attention Output and variants (standard, enc/dec, cross-attn)
+        if (name.find("attn_o") != std::string::npos) { return true; }
+
+        if (name.find("ffn_down.weight") != std::string::npos) { return true; }
+
+        return false;
     };
 
     // Estimate error for a given type using a sampled subset of rows
@@ -1344,7 +1349,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         cnif(wce_scores, 0.25f);
     }
 
-    // TurboQuant outlier mitigation (simulate rotation) - Experimental PoC
+    // Outlier mitigation (simulate TurboQuant rotation)
     auto outlier_smoothing = [&](const std::vector<float>& src, std::vector<float>& dst, const int64_t n_rows, const int64_t len) {
         dst.resize(src.size());
         for (int64_t r = 0; r < n_rows; ++r) {
@@ -1624,16 +1629,9 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
                 ptr_ref_mse
             );
 
-            // TurboQuant bias adjustment for inner-product sensitive tensors - Experimental PoC
             double error = qe.error;
-            if (is_inner_product_sensitive(remapped_name)) {
-                if (bpw < 4.5f) {
-                    // Apply a decaying factor derived from the TurboQuant inner-product distortion bound
-                    float unbias_factor = M_PI / 2.0f;
-                    float decay = std::max(1.0f, 4.0f - bpw); // stronger penalty for 1-bit and 2-bit
-                    error *= unbias_factor * decay;
-                }
-            }
+            // Error adjustment for inner-product sensitive tensors at low bpw
+            if (is_inner_product_sensitive(remapped_name)) { error *= 1.0f + std::pow(2.0f, 3.0f - bpw); }
 
             type_scores candidate;
             candidate.type = vt;
