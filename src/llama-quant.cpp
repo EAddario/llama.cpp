@@ -1878,55 +1878,9 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         return build_mix();
     }
 
-    // Experimental feature, may be removed in the future
-    auto importance_score = [](const std::vector<float> & tstats) -> float {
-        if (tstats.size() < 12) { return 0.0f; }
-
-        const float energy = std::log1pf(std::max(0.0f, (float)tstats[ENERGY]));
-        const float range = 1.0f + std::max(0.0f, tstats[STDDEV]);
-        const float magnitude = std::isfinite(tstats[L2_DIST]) ? 1.0f + tstats[L2_DIST] : 1.0f;
-        const float alignment = std::isfinite(tstats[COSSIM]) ? 1.0f - tstats[COSSIM] : 1.0f;
-        const float concentration = 1.0f - std::clamp(tstats[H_NORM], 0.0f, 100.0f) / 100.0f + EPSILON;
-
-        return energy * range * magnitude * alignment * concentration;
-    };
-
-    // Threshold at which pct of tensors will be marked as important
-    auto threshold_score = [&](const std::unordered_map<std::string, std::vector<float>> & stats, const float pct) -> float {
-        if (stats.empty() || pct < 0.0f || pct > 100.0f) { return std::numeric_limits<float>::quiet_NaN(); }
-
-        std::vector<float> val;
-        val.reserve(stats.size());
-        for (const auto & ts : stats) { val.push_back(importance_score(ts.second)); }
-        if (val.empty()) { return std::numeric_limits<float>::quiet_NaN(); }
-
-        size_t idx = std::round((1.0f - pct / 100.0f) * (val.size() - 1));
-        if (idx >= val.size()) { idx = val.size() - 1; }
-        std::nth_element(val.begin(), val.begin() + idx, val.end());
-
-        return val[idx];
-    };
-
-    float cutoff = std::numeric_limits<float>::quiet_NaN();
-    if (statistics_data && !statistics_data->empty()) { cutoff = threshold_score(* statistics_data, qs.params->importance_pct); }
-
     // Certain tensors have a higher impact on model quality, so we apply a lower penalty to them
     auto is_important = [&](const std::string & tensor_name) -> bool {
         if (tensor_name == "output.weight") { return true; }
-        if (qs.params->importance_pct == 0.0f) { return false; }
-        if (std::isfinite(cutoff)) {
-            if (auto it = statistics_data->find(remap_imatrix(tensor_name, mapped)); it != statistics_data->end() && !it->second.empty()) {
-                return importance_score(it->second) >= cutoff;
-            }
-        } else {
-            return tensor_name.find(".attn_output.weight") != std::string::npos ||
-                tensor_name.find(".attn_o.weight") != std::string::npos ||
-                tensor_name.find(".attn_v.weight") != std::string::npos ||
-                tensor_name.find(".ffn_down.weight") != std::string::npos ||
-                tensor_name.find(".ffn_down_exps.weight") != std::string::npos ||
-                tensor_name.find(".time_mix_output.weight") != std::string::npos ||
-                tensor_name.find(".time_mix_value.weight") != std::string::npos;
-        }
 
         return false;
     };
@@ -2360,9 +2314,6 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
             if (params->pure) {
                 LLAMA_LOG_WARN("%s: --target-bpw/--target-size specified with --pure, ignoring --pure\n", __func__);
             }
-            if (params->importance_pct != 0.0f) {
-                LLAMA_LOG_INFO("%s: marking up to %.2f%% of tensors as important\n", __func__, params->importance_pct);
-            }
             if (params->target_size >= 0) {
                 LLAMA_LOG_INFO("%s: computing tensor quantization mix to achieve file size %.2f MiB\n", __func__, (double)params->target_size / 1024.0 / 1024.0);
             } else {
@@ -2616,8 +2567,7 @@ llama_model_quantize_params llama_model_quantize_default_params() {
         /*.target_bpw                  =*/ -1.0f,
         /*.target_size                 =*/ -1,
         /*.save_state                  =*/ false,
-        /*.state_file                  =*/ nullptr,
-        /*.importance_pct              =*/ 0.0f
+        /*.state_file                  =*/ nullptr
     };
 
     return result;
