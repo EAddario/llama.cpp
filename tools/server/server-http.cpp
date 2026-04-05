@@ -10,7 +10,9 @@
 
 #ifdef LLAMA_BUILD_WEBUI
 // auto generated files (see README.md for details)
-#include "index.html.gz.hpp"
+#include "index.html.hpp"
+#include "bundle.js.hpp"
+#include "bundle.css.hpp"
 #include "loading.html.hpp"
 #endif
 
@@ -113,16 +115,10 @@ bool server_http_context::init(const common_params & params) {
     srv->set_read_timeout (params.timeout_read);
     srv->set_write_timeout(params.timeout_write);
     srv->set_socket_options([reuse_port = params.reuse_port](socket_t sock) {
-        int opt = 1;
-#ifdef _WIN32
-        const char * optval = (const char *)&opt;
-#else
-        const void * optval = &opt;
-#endif
-        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, optval, sizeof(opt));
+        httplib::set_socket_opt(sock, SOL_SOCKET, SO_REUSEADDR, 1);
         if (reuse_port) {
 #ifdef SO_REUSEPORT
-            setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, optval, sizeof(opt));
+            httplib::set_socket_opt(sock, SOL_SOCKET, SO_REUSEPORT, 1);
 #else
             LOG_WRN("%s: SO_REUSEPORT is not supported\n", __func__);
 #endif
@@ -147,7 +143,11 @@ bool server_http_context::init(const common_params & params) {
             "/v1/health",
             "/models",
             "/v1/models",
-            "/api/tags"
+            "/api/tags",
+            "/",
+            "/index.html",
+            "/bundle.js",
+            "/bundle.css",
         };
 
         // If API key is not set, skip validation
@@ -155,8 +155,8 @@ bool server_http_context::init(const common_params & params) {
             return true;
         }
 
-        // If path is public or is static file, skip validation
-        if (public_endpoints.find(req.path) != public_endpoints.end() || req.path == "/") {
+        // If path is public or static file, skip validation
+        if (public_endpoints.find(req.path) != public_endpoints.end()) {
             return true;
         }
 
@@ -278,16 +278,19 @@ bool server_http_context::init(const common_params & params) {
         } else {
 #ifdef LLAMA_BUILD_WEBUI
             // using embedded static index.html
-            srv->Get(params.api_prefix + "/", [](const httplib::Request & req, httplib::Response & res) {
-                if (req.get_header_value("Accept-Encoding").find("gzip") == std::string::npos) {
-                    res.set_content("Error: gzip is not supported by this browser", "text/plain");
-                } else {
-                    res.set_header("Content-Encoding", "gzip");
-                    // COEP and COOP headers, required by pyodide (python interpreter)
-                    res.set_header("Cross-Origin-Embedder-Policy", "require-corp");
-                    res.set_header("Cross-Origin-Opener-Policy", "same-origin");
-                    res.set_content(reinterpret_cast<const char*>(index_html_gz), index_html_gz_len, "text/html; charset=utf-8");
-                }
+            srv->Get(params.api_prefix + "/", [](const httplib::Request & /*req*/, httplib::Response & res) {
+                // COEP and COOP headers, required by pyodide (python interpreter)
+                res.set_header("Cross-Origin-Embedder-Policy", "require-corp");
+                res.set_header("Cross-Origin-Opener-Policy", "same-origin");
+                res.set_content(reinterpret_cast<const char*>(index_html), index_html_len, "text/html; charset=utf-8");
+                return false;
+            });
+            srv->Get(params.api_prefix + "/bundle.js", [](const httplib::Request & /*req*/, httplib::Response & res) {
+                res.set_content(reinterpret_cast<const char*>(bundle_js), bundle_js_len, "application/javascript; charset=utf-8");
+                return false;
+            });
+            srv->Get(params.api_prefix + "/bundle.css", [](const httplib::Request & /*req*/, httplib::Response & res) {
+                res.set_content(reinterpret_cast<const char*>(bundle_css), bundle_css_len, "text/css; charset=utf-8");
                 return false;
             });
 #endif

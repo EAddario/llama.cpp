@@ -306,6 +306,19 @@ value filter_expression::execute_impl(context & ctx) {
             filter_id = "strip"; // alias
         }
         JJ_DEBUG("Applying filter '%s' to %s", filter_id.c_str(), input->type().c_str());
+        // TODO: Refactor filters so this coercion can be done automatically
+        if (!input->is_undefined() && !is_val<value_string>(input) && (
+            filter_id == "capitalize" ||
+            filter_id == "lower" ||
+            filter_id == "replace" ||
+            filter_id == "strip" ||
+            filter_id == "title" ||
+            filter_id == "upper" ||
+            filter_id == "wordcount"
+        )) {
+            JJ_DEBUG("Coercing %s to String for '%s' filter", input->type().c_str(), filter_id.c_str());
+            input = mk_val<value_string>(input->as_string());
+        }
         return try_builtin_func(ctx, filter_id, input)->invoke(func_args(ctx));
 
     } else if (is_stmt<call_expression>(filter)) {
@@ -771,9 +784,14 @@ value member_expression::execute_impl(context & ctx) {
     }
 
     JJ_DEBUG("Member expression on object type %s, property type %s", object->type().c_str(), property->type().c_str());
-    ensure_key_type_allowed(property);
-
     value val = mk_val<value_undefined>("object_property");
+
+    if (property->is_undefined()) {
+        JJ_DEBUG("%s", "Member expression property is undefined, returning undefined");
+        return val;
+    }
+
+    ensure_key_type_allowed(property);
 
     if (is_val<value_undefined>(object)) {
         JJ_DEBUG("%s", "Accessing property on undefined object, returning undefined");

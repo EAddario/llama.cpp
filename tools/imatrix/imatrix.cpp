@@ -1679,6 +1679,8 @@ int main(int argc, char ** argv) {
     params.n_ctx = 512;
     params.escape = false;
 
+    common_init();
+
     if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_IMATRIX, print_usage)) {
         return 1;
     }
@@ -1689,8 +1691,6 @@ int main(int argc, char ** argv) {
         }
         return 0;
     }
-
-    common_init();
 
     const int32_t n_ctx = params.n_ctx;
 
