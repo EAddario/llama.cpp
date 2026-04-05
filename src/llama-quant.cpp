@@ -152,8 +152,8 @@ struct quantize_state_impl {
     quantize_state_impl(const llama_model & model, const llama_model_quantize_params * params) : model(model), params(params) {
         // compile regex patterns once - they are expensive
         if (params->tt_overrides) {
-            for (const auto * p = params->tt_overrides; p->pattern != nullptr; p++) {
-                tensor_type_patterns.emplace_back(std::regex(p->pattern), p->type);
+            for (const auto * o = params->tt_overrides; o->pattern != nullptr; o++) {
+                tensor_type_patterns.emplace_back(std::regex(o->pattern), o->type);
             }
         }
     }
@@ -811,7 +811,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         checkpoint_file += "-" + std::string(hex) + ".bpw_state";
 
         if (qs.params->state_file) {
-            const auto * filename = static_cast<const char*>(qs.params->state_file);
+            const char * filename = qs.params->state_file;
             bool is_valid = false;
 
             if (filename[0] == '\0') { is_valid = true; }
@@ -870,7 +870,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         ofs.close();
         std::remove(checkpoint_file.c_str());
         std::rename(tmp.c_str(), checkpoint_file.c_str());
-        LLAMA_LOG_INFO("%s: saved target progress for %lu tensors to %s\n", func, all_tensors.size(), checkpoint_file.c_str());
+        LLAMA_LOG_INFO("\t%s: saved target progress for %lu tensors to %s\n", func, all_tensors.size(), checkpoint_file.c_str());
     };
 
     // Load vector<type_choice> state from disk
@@ -926,7 +926,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
             out.emplace(std::move(name), std::move(si));
         }
 
-        LLAMA_LOG_INFO("%s: using %s (data for %lu tensors loaded)\n", func, checkpoint_file.c_str(), out.size());
+        LLAMA_LOG_INFO("\t%s: using %s (data for %lu tensors loaded)\n", func, checkpoint_file.c_str(), out.size());
         return out;
     };
 
@@ -2136,13 +2136,15 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
     const std::unordered_map<std::string, std::vector<float>> * values_data = nullptr;
     const std::unordered_map<std::string, std::vector<float>> * activations_data = nullptr;
     const std::unordered_map<std::string, std::vector<float>> * statistics_data = nullptr;
-    std::unordered_map<std::string, std::vector<float>> imtx;
+    std::unordered_map<std::string, std::vector<float>> vdata;
+    std::unordered_map<std::string, std::vector<float>> adata;
+    std::unordered_map<std::string, std::vector<float>> sdata;
     if (params->imatrix) {
-        for (const llama_model_imatrix_data * p = params->imatrix; p->name != nullptr; p++) {
-            imtx.emplace(p->name, std::vector<float>(p->data, p->data + p->size));
+        for (const llama_model_imatrix_data * i = params->imatrix; i->name != nullptr; i++) {
+            vdata.emplace(i->name, std::vector<float>(i->data, i->data + i->size));
         }
 
-        values_data = & imtx;
+        values_data = & vdata;
         if (values_data) {
             LLAMA_LOG_INFO("%s: have importance matrix data with %d entries", __func__, (int)values_data->size());
             qs.has_imatrix = true;
@@ -2155,7 +2157,11 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
         }
     }
     if (params->activations) {
-        activations_data = static_cast<const std::unordered_map<std::string, std::vector<float>>*>(params->activations);
+        for (const llama_model_imatrix_data * a = params->activations; a->name != nullptr; a++) {
+            adata.emplace(a->name, std::vector<float>(a->data, a->data + a->size));
+        }
+
+        activations_data = & adata;
         if (activations_data) {
             LLAMA_LOG_INFO(" - %d activations", (int)activations_data->size());
             qs.has_activations = true;
@@ -2168,7 +2174,11 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
         }
     }
     if (params->statistics) {
-        statistics_data = static_cast<const std::unordered_map<std::string, std::vector<float>>*>(params->statistics);
+        for (const llama_model_imatrix_data * s = params->statistics; s->name != nullptr; s++) {
+            adata.emplace(s->name, std::vector<float>(s->data, s->data + s->size));
+        }
+
+        statistics_data = & sdata;
         if (statistics_data) { LLAMA_LOG_INFO(" and %d statistics", (int)statistics_data->size());
         }
     }

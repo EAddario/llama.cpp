@@ -767,14 +767,16 @@ int main(int argc, char ** argv) {
     std::unordered_map<std::string, std::vector<float>> statistics_data;
     int m_last_call = prepare_imatrix(imatrix_file, imatrix_datasets, included_weights, excluded_weights, values_data, activations_data, statistics_data);
 
-    std::vector<llama_model_imatrix_data> imtx;
-    std::vector<llama_model_tensor_override> tovr;
+    std::vector<llama_model_imatrix_data> vdata;
+    std::vector<llama_model_imatrix_data> adata;
+    std::vector<llama_model_imatrix_data> sdata;
+    std::vector<llama_model_tensor_override> tto;
 
     if (!values_data.empty()) {
-        imtx.reserve(values_data.size() + 1);
-        for (const auto & kv : values_data) { imtx.push_back({kv.first.c_str(), kv.second.data(), kv.second.size()}); }
-        imtx.push_back({nullptr, nullptr, 0});  // array terminator
-        params.imatrix = imtx.data();
+        vdata.reserve(values_data.size() + 1);
+        for (const auto & kv : values_data) { vdata.push_back({kv.first.c_str(), kv.second.data(), kv.second.size()}); }
+        vdata.push_back({nullptr, nullptr, 0});  // array terminator
+        params.imatrix = vdata.data();
         {
             llama_model_kv_override kvo;
             std::strcpy(kvo.key, LLM_KV_QUANTIZE_IMATRIX_FILE);
@@ -808,10 +810,16 @@ int main(int argc, char ** argv) {
         }
     }
     if (!activations_data.empty()) {
-        params.activations = &activations_data;
+        adata.reserve(activations_data.size() + 1);
+        for (const auto & kv : activations_data) { adata.push_back({kv.first.c_str(), kv.second.data(), kv.second.size()}); }
+        adata.push_back({nullptr, nullptr, 0});  // array terminator
+        params.activations = adata.data();
     }
     if (!statistics_data.empty()) {
-        params.statistics = &statistics_data;
+        sdata.reserve(statistics_data.size() + 1);
+        for (const auto & kv : statistics_data) { sdata.push_back({kv.first.c_str(), kv.second.data(), kv.second.size()}); }
+        sdata.push_back({nullptr, nullptr, 0});  // array terminator
+        params.statistics = sdata.data();
     }
     if (!kv_overrides.empty()) {
         kv_overrides.emplace_back();
@@ -819,10 +827,10 @@ int main(int argc, char ** argv) {
         params.kv_overrides = kv_overrides.data();
     }
     if (!tensor_type_opts.empty()) {
-        tovr.reserve(tensor_type_opts.size() + 1);
-        for (const auto & tt : tensor_type_opts) { tovr.push_back({tt.name.c_str(), tt.type}); }
-        tovr.push_back({nullptr, GGML_TYPE_COUNT});  // array terminator
-        params.tt_overrides = tovr.data();
+        tto.reserve(tensor_type_opts.size() + 1);
+        for (const auto & tt : tensor_type_opts) { tto.push_back({tt.name.c_str(), tt.type}); }
+        tto.push_back({nullptr, GGML_TYPE_COUNT});  // array terminator
+        params.tt_overrides = tto.data();
     }
     if (!prune_layers.empty()) {
         prune_layers.push_back(-1);  // array terminator
