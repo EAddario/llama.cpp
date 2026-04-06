@@ -2180,7 +2180,7 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
     }
     if (params->statistics) {
         for (const llama_model_imatrix_data * s = params->statistics; s->name != nullptr; s++) {
-            adata.emplace(s->name, std::vector<float>(s->data, s->data + s->size));
+            sdata.emplace(s->name, std::vector<float>(s->data, s->data + s->size));
         }
 
         statistics_data = & sdata;

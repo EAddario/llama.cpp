@@ -77,6 +77,7 @@ static const char * const LLM_KV_QUANTIZE_IMATRIX_N_CHUNKS   = "quantize.imatrix
 static const char * const LLM_KV_IMATRIX_DATASETS    = "imatrix.datasets";
 static const char * const LLM_KV_IMATRIX_CHUNK_COUNT = "imatrix.chunk_count";
 static const char * const LLM_KV_IMATRIX_CHUNK_SIZE  = "imatrix.chunk_size";
+static const char * const LLM_KV_IMATRIX_STATS_SCHEMA = "imatrix.stats_schema";
 
 static bool striequals(const char * a, const char * b) {
     while (*a && *b) {
@@ -288,6 +289,24 @@ static int load_imatrix(const std::string & imatrix_file,
 
     const uint32_t chunk_size = gguf_get_val_u32(ctx_gguf, chunk_size_idx);
 
+    const int schema_idx = gguf_find_key(ctx_gguf, LLM_KV_IMATRIX_STATS_SCHEMA);
+    std::unordered_map<std::string, int> default_schema_map = {{"sum_sq", 0}, {"mean", 1}, {"elements", 2}, {"std_deviation", 3}, {"skewness", 4},
+        {"kurtosis", 5}, {"gain", 6}, {"h_norm", 7}, {"l2_dist", 8}, {"cossim", 9}, {"pearson", 10}, {"covariance", 11}
+    };
+    std::vector<int> stats_indices;
+    if (schema_idx >= 0) {
+        int64_t n_schema = gguf_get_arr_n(ctx_gguf, schema_idx);
+        for (int64_t i = 0; i < n_schema; ++i) {
+            std::string key = gguf_get_arr_str(ctx_gguf, schema_idx, i);
+            auto it = default_schema_map.find(key);
+            stats_indices.push_back(it != default_schema_map.end() ? it->second : -1);
+        }
+    } else {
+        for (size_t i = 0; i < default_schema_map.size(); ++i) {
+            stats_indices.push_back((int)i);
+        }
+    }
+
     const std::string sums_suffix{ ".in_sum" };
     const std::string sums2_suffix{ ".in_sum2" };
     const std::string counts_suffix{ ".counts" };
@@ -343,16 +362,20 @@ static int load_imatrix(const std::string & imatrix_file,
         }
         if (stats) {
             auto & statistics = statistics_data[name];
-            statistics.resize(ggml_nelements(stats));
+            statistics.resize(default_schema_map.size(), 0.0f);
             if (stats->type == GGML_TYPE_F32) {
-                std::memcpy(statistics.data(), stats->data, ggml_nelements(stats) * sizeof(float));
+                auto stats_data = (const float *)stats->data;
+                for (size_t i = 0; i < stats_indices.size() && i < (size_t)ggml_nelements(stats); ++i) {
+                    if (stats_indices[i] >= 0 && stats_indices[i] < (int)statistics.size()) {
+                        statistics[stats_indices[i]] = stats_data[i];
+                    }
+                }
             } else {
-                fprintf(stderr, "%s: unsupported .stats type '%s' for '%s' - ignoring entry\n",
+                fprintf(stderr, "%s: unsupported .stats type '%s' for '%s'; ignoring entry\n",
                     __func__, ggml_type_name(stats->type), name.c_str());
                 statistics.clear();
                 statistics_data.erase(name);
             }
-
         }
 
         values.resize(ggml_nelements(sums2));
