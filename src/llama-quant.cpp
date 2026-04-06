@@ -1806,7 +1806,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         const size_t total_fixed_bytes = metadata_size + nq_bytes + pinned_bytes;
         total_budget_bytes = (size_t)qs.params->target_size;
         if (total_budget_bytes < total_fixed_bytes + min_total_bytes) {
-            LLAMA_LOG_WARN("%s: requested file size %zu is smaller than minimum possible model size (~%zu bytes); clamping to minimum\n",
+            LLAMA_LOG_WARN("\t%s: requested file size %zu is smaller than minimum possible model size (~%zu bytes); clamping to minimum\n",
             func, (size_t)qs.params->target_size, total_fixed_bytes + min_total_bytes);
             budget_bytes = min_total_bytes;
         } else {
@@ -1816,7 +1816,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         total_budget_bytes = std::llround(qs.params->target_bpw * (double)n_elements / 8.0);
         const size_t total_fixed_bytes = nq_bytes + pinned_bytes;
         if (total_budget_bytes < total_fixed_bytes + min_total_bytes) {
-            LLAMA_LOG_WARN("%s: requested BPW %.4f is smaller than minimum possible model size (~%.4f BPW); clamping to minimum\n",
+            LLAMA_LOG_WARN("\t%s: requested BPW %.4f is smaller than minimum possible model size (~%.4f BPW); clamping to minimum\n",
                 func, qs.params->target_bpw, (double)(total_fixed_bytes + min_total_bytes) * 8.0 / n_elements);
             budget_bytes = min_total_bytes;
         } else {
