@@ -38,6 +38,7 @@ static void print_usage(int, char ** argv) {
 static const char * const LLM_KV_IMATRIX_DATASETS    = "imatrix.datasets";
 static const char * const LLM_KV_IMATRIX_CHUNK_COUNT = "imatrix.chunk_count";
 static const char * const LLM_KV_IMATRIX_CHUNK_SIZE  = "imatrix.chunk_size";
+static const char * const LLM_KV_IMATRIX_STATS_SCHEMA = "imatrix.stats_schema";
 
 struct Stats {
     std::vector<float>   activations;
@@ -885,6 +886,12 @@ void IMatrixCollector::save_imatrix(int32_t n_chunk) const {
         // Write the number of chunks the matrix was computed with
         gguf_set_val_u32(ctx_gguf, LLM_KV_IMATRIX_CHUNK_COUNT, m_last_chunk);
         gguf_set_val_u32(ctx_gguf, LLM_KV_IMATRIX_CHUNK_SIZE, m_params.n_ctx / m_params.n_parallel);
+
+        // Define the schema for the tensor statistics (for use in quantize.cpp)
+        const char * stats_schema[] = {"sum_sq", "mean", "elements", "std_deviation", "skewness", "kurtosis", "gain",
+            "h_norm", "l2_dist", "cossim", "pearson", "covariance"
+        };
+        gguf_set_arr_str(ctx_gguf, LLM_KV_IMATRIX_STATS_SCHEMA, stats_schema, 12);
     }
 
     for (const auto & name : to_store) {
@@ -951,6 +958,7 @@ void IMatrixCollector::save_imatrix(int32_t n_chunk) const {
 
             struct ggml_tensor * stats = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, 12);
             ggml_format_name(stats, "%s.stats", name.c_str());
+            // Store the statistics in the same order as defined in stats_schema[]
             ((float *)stats->data)[0] = (float)sum_sq;
             ((float *)stats->data)[1] = mean;
             ((float *)stats->data)[2] = elements;
