@@ -71,31 +71,46 @@ Recent versions of `llama-imatrix` store data in GGUF format by default. For the
 
 ```bash
 # analyze imatrix file and display summary statistics instead of running inference
-./llama-imatrix --in-file imatrix.gguf --show-statistics
+./llama-imatrix -m ggml-model-f16.gguf --in-file imatrix.gguf --show-statistics
 ```
 
 ## Statistics
-
-Please note that the L₂ Distance can only be calculated if the imatrix is in GGUF format. If a value lacks proper statistical interpretability, **nan** will be shown instead. The following statistics are computed:
+Please note that if a value lacks statistical interpretability, **nan** will be shown instead.
 
 #### Per tensor
+Statistical properties of a single tensor's average activation or activation energy (squared magnitude).
 
-* **Min / Max / μ / σ**: Tensor elements Min, Max, Mean, and Standard Deviation.
-* **H Norm**: Shannon Entropy normalized over log₂(N). Defined as $H Norm=\frac{-\sum_{i=1}^N p_i \log_2 p_i}{log_2 N}$. Used to determine how well a prompt "exercises" the model's capabilities. Higher values indicate more uniform distribution of activations. Every neuron is firing equally; hard to prune.
-* **Z-score Distribution (ZD)**: % of elements whose ZD-score is > 1.0 (an indicator of outliers), as described in _3.1 Layer Importance Scores_ of [Layer-Wise Quantization](https://arxiv.org/abs/2406.17415).
-* **∑ E[A²]**: The sum of squares of activations (Energy) for the tensor. Tensors with high "energy" contribute most to the final output. Quantization errors here propagate strongly. These tensors usually need higher precision (e.g., Q6_K vs Q4_K).
-* **L₂ Distance**: Euclidean Distance from the tensor in the previous layer. Measure of transformation magnitude; higher values indicate more significant transformation on the data.
-* **CosSim**: Cosine Similarity with the tensor in the previous layer. _~1.0_, the tensor output points in the exact same direction as the previous layer's tensor (the layer is refining magnitude, not direction). _< 1.0_, the layer is rotating the vector space (changing semantic meaning).
-* **PCC**: Pearson Correlation Coefficient with the tensor in the previous layer. Checks for linear correlation excluding the mean shift. Similar to CosSim but centers geometric data first. Indicates if the pattern of activation changes or just the offset.
+* **Mean / StdDev**: $\mu = \frac{1}{N} \sum v_i$ and $\sigma = \sqrt{\frac{1}{N-1 \text{ or } N} \sum (v_i - \mu)^2}$
+  - Establishes the baseline distribution of the tensor's outputs. Low variance means the tensor outputs a mostly constant projection; high variance implies high information density across dimensions.
+* **Skewness & Kurtosis**: $skew = \frac{\frac{1}{N} \sum (v_i - \mu)^3}{\sigma^3}$ and $kurt = \frac{\frac{1}{N} \sum (v_i - \mu)^4}{\sigma^4} - 3.0$
+  - Skewness measures the asymmetry of a distribution around its mean. Kurtosis measures the "tailedness" of the feature activations. A high kurtosis indicates a highly sparse/heavy-tailed activation distribution (e.g., outlier features). High-kurtosis tensors typically require higher precision quantization to prevent outlier degradation.
+* **H Norm**: $H = -\sum_{i} P_i \log_2(P_i)$, where $P_i = \frac{v_{val_i}}{\sum v_{val_i}}$ 
+  - Shannon Entropy normalized over log₂(N). Used to determine how well a prompt "exercises" the model's capabilities. Higher values indicate more uniform distribution of activations. Every neuron is firing equally; hard to prune.
+* **$\sum E[A^2]$**: $\sum E[x_i^2]$
+  - The sum of squares of activations (Energy) for the tensor. Tensors with high "energy" contribute most to the final output. Quantization errors here propagate strongly. These tensors usually need higher precision.
+
+#### Intra-layer
+These statistics compare identical tensor between the current layer $L$ and the previsou layer $L-1$ (e.g., `blk.1.attn_v` vs `blk.0.attn_v`).
+
+* **Gain**: $G = \frac{\sqrt{\sum C_i^2 / N_{curr}}}{\sqrt{\sum P_i^2 / N_{prev}}}$ 
+  - Indicates if a layer acts as an "amplifier" ($G > 1$) or a "dampener" ($G < 1$).
+* **L2 Distance**: $L2 = \sqrt{ \sum (C_i - P_i)^2 }$ where $C$ is the current layer and $P$ is the previous layer's tensor. 
+  - Measures absolute representational shift. Huge leaps in L2 distance indicate that a layer fundamentally transforms the hidden states.
+* **Pearson Correlation Coefficient (PCC)**: $r = \frac{\sum (C_i - \bar{C})(P_i - \bar{P})}{\sqrt{\sum (C_i - \bar{C})^2} \sqrt{\sum (P_i - \bar{P})^2}}$
+  - Similar to Cosine Similarity, but invariant to scalar or offset biases (centers the data first). Highly correlated adjacent layers signify structural repetition.
+* **Covariance (Cov)**: $\frac{1}{N}\sum (c_i-\bar c)(p_i-\bar p)$ 
+  - The **unnormalized covariance** between current and previous layer activations. Captures both the correlation structure and the magnitude of the joint variation. Large absolute covariance indicates the layers are jointly processing strong, correlated signals.
 
 #### Per layer
-
 Aggregated metrics per block/layer:
 
-* **Z-score Distribution (ZD)**: % of this layer's concatenated tensors' elements with |Z| > 1. Indicates general "spikiness" of the layer's activations.
 * **∑ E[A²]:** Total energy of the layer's concatenated tensors. Indicates the layer's overall contribution amplitude.
+* **Gain**: Indicates if a layer acts as an "amplifier" ($G > 1$) or a "dampener" ($G < 1$).
 * **L₂ Distance:** Euclidean Distance of the layer's concatenated tensors from the previous layer’s. Global measure of transformation magnitude.
-* **CosSim**: Cosine Similarity of this layer's concatenated tensors with the previous layer.
-* **PCC**: Average Pearson Correlation of the tensors in the layer.
+* **CosSim**: $\text{CosSim}_{Layer} = \frac{\sum_{\text{tensors}} (\text{Dot Prod})}{\sqrt{\sum_{\text{tensors}} (\text{Norm1}^2)} \sqrt{\sum_{\text{tensors}} (\text{Norm2}^2)}}$
+  - Cosine Similarity of the current layer's concatenated tensors with the previous layer.
+* **PCC**: $\text{PCC}_{Layer} = \frac{\sum \text{Covariance}^2}{\sqrt{\sum \text{Var}_{curr}} \sqrt{\sum \text{Var}_{prev}}}$ 
+  - Average Pearson Correlation of the tensors in the layer.
+* **Cov**: The **unnormalized covariance** between current layer's concatenated tensors and the previous layer.
 
 More information is available in https://github.com/ggml-org/llama.cpp/pull/14891
