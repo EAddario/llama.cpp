@@ -80,7 +80,7 @@ Please note that if a value lacks statistical interpretability, **nan** will be 
 #### Per tensor
 Statistical properties of a single tensor's average activation or activation energy (squared magnitude).
 
-* **Mean / StdDev**: $\mu = \frac{1}{N} \sum v_i$ and $\sigma = \sqrt{\frac{1}{N-1 \text{ or } N} \sum (v_i - \mu)^2}$
+* **Mean / StdDev**: $\mu = \frac{1}{N} \sum v_i$ and $\sigma = \sqrt{\frac{1}{N} \sum (v_i - \mu)^2}$
   - Establishes the baseline distribution of the tensor's outputs. Low variance means the tensor outputs a mostly constant projection; high variance implies high information density across dimensions.
 * **Skewness & Kurtosis**: $skew = \frac{\frac{1}{N} \sum (v_i - \mu)^3}{\sigma^3}$ and $kurt = \frac{\frac{1}{N} \sum (v_i - \mu)^4}{\sigma^4} - 3.0$
   - Skewness measures the asymmetry of a distribution around its mean. Kurtosis measures the "tailedness" of the feature activations. A high kurtosis indicates a highly sparse/heavy-tailed activation distribution (e.g., outlier features). High-kurtosis tensors typically require higher precision quantization to prevent outlier degradation.
