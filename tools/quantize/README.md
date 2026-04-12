@@ -54,22 +54,31 @@ Options:
 * `--output-tensor-type` use a specific quant type for the output.weight tensor
 * `--token-embedding-type` use a specific quant type for the token embeddings tensor
 * `--keep-split` will generate the quantized model in the same shards as the input file otherwise it will produce a single quantized file
+* `--dry-run` simulate the quantization process
 
 Advanced options:
 * `--tensor-type` quantize specific tensor(s) to specific quant types. Supports regex syntax. May be specified multiple times
 * `--prune-layers` prune (remove) the layers in the list
+* `--override-kv` override model metadata by key in the quantized model; allowed value types are `boolean`, `int`, `float`, and `str`. May be specified multiple times
 * `--target-bpw` automatically choose quant types to meet an overall bits per weight (bpw) target
 * `--target-size` automatically choose quant types to meet a file size target
-* `--ignore-tensor-importance` during target computation, treat each tensor equally instead of prioritizing some. It may yield better quality for some models
-* `--save-state` save the target computation to a file. By default, it saves to `<model name>-<model hash>-mse.bpw_state` unless `--state-file` is also specified
-* `--state-file` file name to load from / save to target computations
-* `--override-kv` option to override model metadata by key in the quantized model. May be specified multiple times
+* `--state-file` file name to use or save to the bpw/size error computations; if no name is provided it defaults to `<model name>-<model hash>.bpw_state`
 
 Examples:
 
 ```bash
 # naive Q4_K_M quantization using default settings and 8 CPU threads. Output will be "ggml-model-Q4_K_M.gguf"
 ./llama-quantize input-model-f32.gguf q4_k_m 8
+```
+
+```bash
+# simulate naive Q4_K_M quantization process. No model will be generated
+./llama-quantize --dry-run input-model-f32.gguf q4_k_m 8
+```
+
+```bash
+# naive Q4_K_M quantization overriding general.name and model.rope.freq_base metadata values
+./llama-quantize --override-kv general.name=str:"New model name" --override-kv model.rope.freq_base=float:1.234e+08 input-model-f32.gguf q4_k_m 8
 ```
 
 ```bash
@@ -104,17 +113,17 @@ Examples:
 
 ```bash
 # quantize model targeting a specific bpw average and save the target computations to the default file. Model type is optional and can be omitted
-./llama-quantize --target-bpw 4.5678 --save-state --imatrix imatrix.gguf input-model-f32.gguf 8
+./llama-quantize --target-bpw 4.5678 --state-file --imatrix imatrix.gguf input-model-f32.gguf 8
 ```
 
 ```bash
-# quantize model targeting a specific file size and save the target computations to a custom file. Model type is optional and can be omitted
-./llama-quantize --target-size 1.5gb --save-state --state-file my-state-file.dat --imatrix imatrix.gguf input-model-f32.gguf 8
+# quantize model targeting a specific bpw average reusing previous target computations in deault file (e.g. input-model-8fd7a8bef0803042.bpw_state)
+./llama-quantize --target-bpw 2.345 ---state-file --imatrix imatrix.gguf input-model-f32.gguf 8
 ```
 
 ```bash
-# quantize model targeting a specific bpw average reusing previous target computations
-./llama-quantize --target-bpw 2.5 ---state-file my-state-file.dat --imatrix imatrix.gguf input-model-f32.gguf 8
+# quantize model targeting a specific file size and save the target computations to a custom file.
+./llama-quantize --target-size 1.5g --state-file my-state-file.dat --imatrix imatrix.gguf input-model-f32.gguf 8
 ```
 
 ## Memory/Disk Requirements
@@ -179,3 +188,4 @@ Several quantization methods are supported. They differ in the resulting model d
   - [#5060 - Q3_K_XS](https://github.com/ggml-org/llama.cpp/pull/5060)
   - [#5196 - 3-bit i-quants](https://github.com/ggml-org/llama.cpp/pull/5196)
   - [quantization tuning](https://github.com/ggml-org/llama.cpp/pull/5320), [another one](https://github.com/ggml-org/llama.cpp/pull/5334), and [another one](https://github.com/ggml-org/llama.cpp/pull/5361)
+- [target bpw/size](https://github.com/ggml-org/llama.cpp/pull/15550)
