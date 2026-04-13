@@ -923,6 +923,8 @@ void IMatrixCollector::save_imatrix(int32_t n_chunk) const {
                 }
                 gguf_add_tensor(ctx_gguf, in_sum);
             }
+        } else {
+            LOG_WRN("%s: no data for tensor %s\n", __func__, name.c_str());
         }
 
         // Store per-tensor statistics as a small 1D tensor
