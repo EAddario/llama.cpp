@@ -2473,7 +2473,7 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
                 if (values_data) {
                     auto it = values_data->find(tm.remapped_imatrix_name);
                     if (it == values_data->end()) {
-                        LLAMA_LOG_INFO("\n====== %s: did not find weights for %s\n", __func__, tensor->name);
+                        LLAMA_LOG_INFO("\n====== %s: did not find imatrix data for %s\n", __func__, tensor->name);
                     } else {
                         if (it->second.size() == (size_t)tensor->ne[0]*tensor->ne[2]) {
                             imatrix = it->second.data();
