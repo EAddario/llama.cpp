@@ -1,6 +1,9 @@
-#include "common.h"
-#include "gguf.h"
 #include "llama.h"
+
+#include "build-info.h"
+#include "common.h"
+
+#include "gguf.h"
 
 #include <algorithm>
 #include <cctype>
@@ -8,12 +11,12 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <map>
+#include <vector>
 #include <string>
 #include <unordered_map>
-#include <vector>
+#include <map>
+#include <fstream>
+#include <filesystem>
 
 // changes to this struct must also be reflected in src/llama-quant.cpp
 struct tensor_type_option {
@@ -947,7 +950,7 @@ int main(int argc, char ** argv) {
         }
     }
 
-    print_build_info();
+    llama_print_build_info();
 
     if (params.dry_run) {
         fprintf(stderr, "%s: calculating quantization size for '%s' as %s", __func__, fname_inp.c_str(), ftype_str.c_str());
