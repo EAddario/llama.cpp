@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <clocale>
 #include <cmath>
 #include <cstdio>
