@@ -951,7 +951,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
 
     // Quality metrics
     struct quant_error {
-        double error = INFINITE;
+        double error = std::numeric_limits<double>::infinity();
         double mse = 0.0;
         double wce = 0.0;
     };
