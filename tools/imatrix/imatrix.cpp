@@ -1646,7 +1646,7 @@ static bool show_statistics(const common_params & params) {
         LOG_INF("%s\n", std::string(76, '-').c_str());
     }
 
-    auto get_layer_stat = [](const std::map<int, float>& map, int layer) -> float {
+    auto get_layer_stat = [&](const std::map<int, float>& map, const int layer) -> float {
         const auto it = map.find(layer);
         return it != map.end() ? it->second : fnan;
     };
