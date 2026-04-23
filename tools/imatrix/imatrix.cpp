@@ -1506,17 +1506,17 @@ static bool show_statistics(const common_params & params) {
             process_tensor_name(b.tensor, lay_b, name_b);
 
             // Handle non-numeric layers (e.g., "output")
-            int blk_a = 9999;
-            int blk_b = 9999;
+            int blk_a = INT_MAX - 1;
+            int blk_b = INT_MAX - 1;
             try {
                 blk_a = std::stoi(lay_a);
             } catch(...) {
-                if (a.tensor.find("output") != std::string::npos) { blk_a = 10000; }
+                if (a.tensor.find("output") != std::string::npos) { blk_a = INT_MAX; }
             }
             try {
                 blk_b = std::stoi(lay_b);
             } catch(...) {
-                if (b.tensor.find("output") != std::string::npos) { blk_b = 10000; }
+                if (b.tensor.find("output") != std::string::npos) { blk_b = INT_MAX; }
             }
 
             if (blk_a != blk_b) { return blk_a < blk_b; }
@@ -1573,7 +1573,7 @@ static bool show_statistics(const common_params & params) {
         try {
             blk = std::stoi(layer);
         } catch (...) {
-            if (tstat.tensor.find("output") != std::string::npos) { blk = 10000; }
+            if (tstat.tensor.find("output") != std::string::npos) { blk = INT_MAX; }
             else { blk = -1; }
         }
 
@@ -1654,13 +1654,13 @@ static bool show_statistics(const common_params & params) {
     for (const auto & [layer, stats] : ls) {
         if (layer < 0 || stats.n == 0) { continue; }
 
-        float lgn = layer == 0 || layer == 10000 ? fnan : get_layer_stat(layer_gain, layer);
-        float ll2 = layer == 0 || layer == 10000 ? fnan : get_layer_stat(layer_l2_dist, layer);
-        float lcs = layer == 0 || layer == 10000 ? fnan : get_layer_stat(layer_cossim, layer);
-        float lpc = layer == 0 || layer == 10000 ? fnan : get_layer_stat(layer_pearson, layer);
-        float lcv = layer == 0 || layer == 10000 ? fnan : get_layer_stat(layer_covariance, layer);
+        float lgn = layer == 0 || layer == INT_MAX ? fnan : get_layer_stat(layer_gain, layer);
+        float ll2 = layer == 0 || layer == INT_MAX ? fnan : get_layer_stat(layer_l2_dist, layer);
+        float lcs = layer == 0 || layer == INT_MAX ? fnan : get_layer_stat(layer_cossim, layer);
+        float lpc = layer == 0 || layer == INT_MAX ? fnan : get_layer_stat(layer_pearson, layer);
+        float lcv = layer == 0 || layer == INT_MAX ? fnan : get_layer_stat(layer_covariance, layer);
         auto str = std::to_string(layer);
-        const auto *lyr = layer == 10000 ? "-" : str.c_str();
+        const auto *lyr = layer == INT_MAX ? "-" : str.c_str();
 
         if (legacy) {
             LOG_INF("%*s%s%14.4f%8.2f%s%9.4f%9.4f%12.4f\n",
