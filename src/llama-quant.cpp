@@ -1015,8 +1015,18 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
 
         const size_t row_sz = ggml_row_size(quant_type, n_per_row);
         constexpr size_t SAFETY_PADDING = 256;
-        if (quantized_buffer.size() < row_sz * sample_rows + SAFETY_PADDING) { quantized_buffer.resize(row_sz * sample_rows + SAFETY_PADDING); }
-        if (dequantized_buffer.size() < sample_elems) { dequantized_buffer.resize(sample_elems); }
+        if (quantized_buffer.size() < row_sz + SAFETY_PADDING) { quantized_buffer.resize(row_sz + SAFETY_PADDING); }
+        if (dequantized_buffer.size() < (size_t)n_per_row) { dequantized_buffer.resize((size_t)n_per_row); }
+
+        const ggml_type_traits * traits = ggml_get_type_traits(quant_type);
+        if (!traits || !traits->to_float) { return qe; }
+
+        auto quant_dequant_row = [&](const float * src, float * dst, const float * v) {
+            ggml_quantize_chunk(quant_type, src, quantized_buffer.data(), 0, 1, n_per_row, v);
+            if (quant_type == GGML_TYPE_F16) { ggml_fp16_to_fp32_row((const ggml_fp16_t *)quantized_buffer.data(), dst, (int)n_per_row); }
+            else if (quant_type == GGML_TYPE_BF16) { ggml_bf16_to_fp32_row((const ggml_bf16_t *)quantized_buffer.data(), dst, (int)n_per_row); }
+            else { traits->to_float(quantized_buffer.data(), dst, (int)n_per_row); }
+        };
 
         const bool has_vals = values_sample != nullptr;
         const bool has_acts = activations_sample != nullptr;
@@ -1064,31 +1074,6 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
             }
         }
 
-        // Quantize & dequantize row samples
-        {
-            size_t qoff = 0;
-            size_t foff = 0;
-            for (int64_t s = 0; s < ne2; ++s) {
-                const int64_t rs = rows_sample[s];
-                if (rs == 0) { continue; }
-
-                const float * v = has_vals ? values_sample + s * n_per_row : nullptr;
-                ggml_quantize_chunk(quant_type, f32_sample.data() + foff, quantized_buffer.data() + qoff, 0, rs, n_per_row, v);
-                qoff += row_sz * (size_t)rs;
-                foff += (size_t)rs * (size_t)n_per_row;
-            }
-
-            const ggml_type_traits * traits = ggml_get_type_traits(quant_type);
-            if (!traits || !traits->to_float) { return qe; }
-            for (size_t r = 0; r < sample_rows; ++r) {
-                const void * src = quantized_buffer.data() + r * row_sz;
-                float * dst = dequantized_buffer.data() + r * (size_t)n_per_row;
-                if (quant_type == GGML_TYPE_F16) { ggml_fp16_to_fp32_row((const ggml_fp16_t *)src, dst, (int)n_per_row); }
-                else if (quant_type == GGML_TYPE_BF16) { ggml_bf16_to_fp32_row((const ggml_bf16_t *)src, dst, (int)n_per_row); }
-                else { traits->to_float(src, dst, (int)n_per_row); }
-            }
-        }
-
         // Helper for trimmed mean
         auto trimmed_mean = [](std::vector<double> & v) -> double {
             const auto n = v.size();
@@ -1117,7 +1102,8 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
 
                 for (int64_t r = 0; r < rs; ++r, ++sample_idx) {
                     const float * wx = f32_sample.data() + off;
-                    const float * wy = dequantized_buffer.data() + off;
+                    float * wy = dequantized_buffer.data();
+                    quant_dequant_row(wx, wy, v);
 
                     double dot = 0.0;
                     double ny = 0.0;
@@ -1185,7 +1171,9 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
 
             for (int64_t r = 0; r < rs; ++r, ++row_idx) {
                 const float * x = f32_sample.data() + off;
-                const float * y = dequantized_buffer.data() + off;
+                float * y = dequantized_buffer.data();
+                quant_dequant_row(x, y, val);
+
                 double w_err = 0.0;
                 double bias_num = 0.0;
 
@@ -1394,6 +1382,8 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
     auto process_tensor = [&](
         const llama_model_loader::llama_tensor_weight * tw,
         std::vector<no_init<uint8_t>> & thread_local_buffer,
+        std::vector<float> & f32_sample,
+        std::vector<float> & smoothed_sample,
         std::mutex & loader_mutex,
         std::mutex & log_mutex
     ) -> std::optional<type_choice>
@@ -1453,7 +1443,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         };
 
         const int64_t rows_to_sample = sample_count(n_per_row, nrows_total, ne2, activations_data != nullptr);
-        std::vector<float> f32_sample;
+        f32_sample.clear();
         f32_sample.reserve((size_t)ne2 * (size_t)std::min(nrows_total, rows_to_sample) * (size_t)n_per_row);
         std::vector<int64_t> rows_sample(ne2, 0);
 
@@ -1489,7 +1479,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
             }
         }
 
-        std::vector<float> smoothed_sample;
+        smoothed_sample.clear();
         bool is_outlier_heavy = remapped_name.find("ffn_down") != std::string::npos;
         if (is_outlier_heavy) { outlier_smoothing(f32_sample, smoothed_sample, rows_to_sample * ne2, n_per_row); }
 
@@ -1725,12 +1715,14 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         for (int i = 0; i < n_workers; ++i) {
             threads.emplace_back([&](){
                 std::vector<no_init<uint8_t>> buf;
+                std::vector<float> f32_sample;
+                std::vector<float> smoothed_sample;
                 while(true) {
                     const size_t cur = idx.fetch_add(1);
                     if (cur >= tensors.size()) { break; }
                     if (!can_quantize(tensors[cur]->tensor)) { continue; }
 
-                    auto res = process_tensor(tensors[cur], buf, m_load, m_log);
+                    auto res = process_tensor(tensors[cur], buf, f32_sample, smoothed_sample, m_load, m_log);
                     if (res) {
                         std::lock_guard<std::mutex> lock(m_res);
                         all_tensors.push_back(std::move(*res));
