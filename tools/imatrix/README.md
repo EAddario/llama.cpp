@@ -84,7 +84,7 @@ Statistical properties of a single tensor's average activation or activation ene
   - Establishes the baseline distribution of the tensor's outputs. Low variance means the tensor outputs a mostly constant projection; high variance implies high information density across dimensions.
 * **Skewness & Kurtosis**: $skew = \frac{\frac{1}{N} \sum (v_i - \mu)^3}{\sigma^3}$ and $kurt = \frac{\frac{1}{N} \sum (v_i - \mu)^4}{\sigma^4} - 3.0$
   - Skewness measures the asymmetry of a distribution around its mean. Kurtosis measures the "tailedness" of the feature activations. A high kurtosis indicates a highly sparse/heavy-tailed activation distribution (e.g., outlier features). High-kurtosis tensors typically require higher precision quantization to prevent outlier degradation.
-* **H Norm**: $H = -\sum_{i} P_i \log_2(P_i)$, where $P_i = \frac{v_{val_i}}{\sum v_{val_i}}$ 
+* **H Norm**: $H = -\sum_{i} P_i \log_2(P_i)$, where $P_i = \frac{v_{val_i}}{\sum v_{val_i}}$
   - Shannon Entropy normalized over log₂(N). Used to determine how well a prompt "exercises" the model's capabilities. Higher values indicate more uniform distribution of activations. Every neuron is firing equally; hard to prune.
 * **$\sum E[A^2]$**: $\sum E[x_i^2]$
   - The sum of squares of activations (Energy) for the tensor. Tensors with high "energy" contribute most to the final output. Quantization errors here propagate strongly. These tensors usually need higher precision.
@@ -92,13 +92,13 @@ Statistical properties of a single tensor's average activation or activation ene
 #### Intra-layer
 These statistics compare identical tensor between the current layer $L$ and the previsou layer $L-1$ (e.g., `blk.1.attn_v` vs `blk.0.attn_v`).
 
-* **Gain**: $G = \frac{\sqrt{\sum C_i^2 / N_{curr}}}{\sqrt{\sum P_i^2 / N_{prev}}}$ 
+* **Gain**: $G = \frac{\sqrt{\sum C_i^2 / N_{curr}}}{\sqrt{\sum P_i^2 / N_{prev}}}$
   - Indicates if a layer acts as an "amplifier" ($G > 1$) or a "dampener" ($G < 1$).
-* **L2 Distance**: $L2 = \sqrt{ \sum (C_i - P_i)^2 }$ where $C$ is the current layer and $P$ is the previous layer's tensor. 
+* **L2 Distance**: $L2 = \sqrt{ \sum (C_i - P_i)^2 }$ where $C$ is the current layer and $P$ is the previous layer's tensor.
   - Measures absolute representational shift. Huge leaps in L2 distance indicate that a layer fundamentally transforms the hidden states.
 * **Pearson Correlation Coefficient (PCC)**: $r = \frac{\sum (C_i - \bar{C})(P_i - \bar{P})}{\sqrt{\sum (C_i - \bar{C})^2} \sqrt{\sum (P_i - \bar{P})^2}}$
   - Similar to Cosine Similarity, but invariant to scalar or offset biases (centers the data first). Highly correlated adjacent layers signify structural repetition.
-* **Covariance (Cov)**: $\frac{1}{N}\sum (c_i-\bar c)(p_i-\bar p)$ 
+* **Covariance (Cov)**: $\frac{1}{N}\sum (c_i-\bar c)(p_i-\bar p)$
   - The **unnormalized covariance** between current and previous layer activations. Captures both the correlation structure and the magnitude of the joint variation. Large absolute covariance indicates the layers are jointly processing strong, correlated signals.
 
 #### Per layer
@@ -109,7 +109,7 @@ Aggregated metrics per block/layer:
 * **L₂ Distance:** Euclidean Distance of the layer's concatenated tensors from the previous layer’s. Global measure of transformation magnitude.
 * **CosSim**: $\text{CosSim}_{Layer} = \frac{\sum_{\text{tensors}} (\text{Dot Prod})}{\sqrt{\sum_{\text{tensors}} (\text{Norm1}^2)} \sqrt{\sum_{\text{tensors}} (\text{Norm2}^2)}}$
   - Cosine Similarity of the current layer's concatenated tensors with the previous layer.
-* **PCC**: $\text{PCC}_{Layer} = \frac{\sum \text{Covariance}^2}{\sqrt{\sum \text{Var}_{curr}} \sqrt{\sum \text{Var}_{prev}}}$ 
+* **PCC**: $\text{PCC}_{Layer} = \frac{\sum \text{Covariance}^2}{\sqrt{\sum \text{Var}_{curr}} \sqrt{\sum \text{Var}_{prev}}}$
   - Average Pearson Correlation of the tensors in the layer.
 * **Cov**: The **unnormalized covariance** between current layer's concatenated tensors and the previous layer.
 
