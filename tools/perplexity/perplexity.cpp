@@ -295,7 +295,7 @@ static void process_logits(int n_vocab, const float * logits, const int * tokens
 
 static results_perplexity perplexity_v2(llama_context * ctx, const common_params & params) {
     // Download: https://huggingface.co/datasets/ggml-org/ci/resolve/main/wikitext-2-raw-v1.zip
-    // Run `./perplexity -m models/7B/ggml-model-q4_0.bin -f wiki.test.raw`
+    // Run `./perplexity -m models/7B/ggml-model-q4_0.bin -f wiki.test.raw --ppl-stride 256`
     // Output: `perplexity: 13.5106 [114/114]`
     // BOS tokens will be added for each chunk before eval
 
