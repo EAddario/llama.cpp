@@ -1322,6 +1322,14 @@ static size_t levenshtein_distance(const std::string & s1, const std::string & s
     return d[l1][l2];
 }
 
+static float string_similarity(const std::string& s1, const std::string& s2) {
+    if (s1.empty() && s2.empty()) { return 1.0f; }
+    if (s1.empty() || s2.empty()) { return 0.0f; }
+    const size_t dist = levenshtein_distance(s1, s2);
+    const size_t max_len = std::max(s1.size(), s2.size());
+    return 1.0f - (float)dist / (float)max_len;
+}
+
 static bool deserialize_string(std::istream & in, std::string & str) {
     uint32_t size;
     if (!in.read((char *)&size, sizeof(size)).fail()) {
