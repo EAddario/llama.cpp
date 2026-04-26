@@ -14,6 +14,7 @@
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <map>
 #include <mutex>
 #include <random>
 #include <sstream>
@@ -1451,6 +1452,17 @@ static void omni_score(llama_context * ctx, const common_params & params) {
     int partial = 0;
     int incorrect = 0;
     int abstain = 0;
+
+    struct domain_stats {
+        double total_ppl = 0;
+        int n_done = 0;
+        int correct = 0;
+        int partial = 0;
+        int incorrect = 0;
+        int abstain = 0;
+    };
+    std::map<std::string, domain_stats> stats_by_domain;
+
     LOG("\n%5s\t%5s\t%20s\t%10s\n", "Task", "Id", "PPL", "Match");
     for (size_t i0 = 0; i0 < data.size(); i0++) {
         int n_cur = 0;
@@ -1581,8 +1593,8 @@ static void omni_score(llama_context * ctx, const common_params & params) {
             double sum_logprob = 0;
             size_t num_eval_tokens = task.seq_full.size() - task.n_question_tokens;
             if (num_eval_tokens > 0) {
-                std::string target_str = "";
-                std::string wanted_str = "";
+                std::string target_str;
+                std::string wanted_str;
                 for (size_t j = 0; j < num_eval_tokens; ++j) {
                     sum_logprob += eval_results[ir];
                     llama_token expected = eval_pairs[ir].second;
@@ -1611,22 +1623,32 @@ static void omni_score(llama_context * ctx, const common_params & params) {
                 std::string norm_wanted = normalize(wanted_str);
                 float similarity = string_similarity(norm_target, norm_wanted);
                 const auto * match_str = "Incorrect";
+                auto & ds = stats_by_domain[task.domain];
+
                 if (norm_target.empty() || norm_wanted.empty()) {
                     match_str = "Abstain";
                     abstain++;
+                    ds.abstain++;
                 } else if (similarity > 0.80f) {
                     match_str = "Correct";
                     correct++;
+                    ds.correct++;
                 } else if (similarity > 0.50f) {
                     match_str = "Partial";
                     partial++;
+                    ds.partial++;
                 } else {
                     incorrect++;
+                    ds.incorrect++;
                 }
 
                 double task_ppl = std::exp(-sum_logprob / num_eval_tokens);
                 total_ppl += task_ppl;
                 ++n_done;
+
+                ds.total_ppl += task_ppl;
+                ds.n_done++;
+
                 LOG("%5zu\t%5d\t%20.4lf\t%10s\n", i+1, task.question_id, task_ppl, match_str);
             } else {
                 LOG("%5zu\t%5d\tN/A (0 tokens)\n", i+1, task.question_id);
@@ -1644,7 +1666,17 @@ static void omni_score(llama_context * ctx, const common_params & params) {
     if (n_done > 0) {
         LOG_INF("Final Q&A Average Perplexity (%d tasks): %.4lf\n", n_done, total_ppl / n_done);
         float oi = 100.f * (float)(correct - incorrect) / (float)n_done;
-        LOG_INF("Omniscience Index %.2f (Correct: %d, Partial: %d, Incorrect: %d, Abstain: %d\n", oi, correct, partial, incorrect, abstain);
+        LOG_INF("Omniscience Index %.2f (Correct: %d, Partial: %d, Incorrect: %d, Abstain: %d)\n", oi, correct, partial, incorrect, abstain);
+
+        LOG_INF("\n--- Domain Breakdown ---\n");
+        for (const auto& [domain, ds] : stats_by_domain) {
+            if (ds.n_done > 0) {
+                float d_oi = 100.f * (float)(ds.correct - ds.incorrect) / (float)ds.n_done;
+                LOG_INF("%-45s | Tasks: %4d | PPL: %20.4lf | OI: %6.2f | (C: %3d, P: %3d, I: %3d, A: %3d)\n",
+                        domain.c_str(), ds.n_done, ds.total_ppl / ds.n_done, d_oi,
+                        ds.correct, ds.partial, ds.incorrect, ds.abstain);
+            }
+        }
     }
 }
 
