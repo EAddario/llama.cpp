@@ -1300,6 +1300,28 @@ static void winogrande_score(llama_context * ctx, const common_params & params) 
     LOG_INF("Final Winogrande score(%d tasks): %.4lf +/- %.4lf\n", n_done, 100*p, sigma);
 }
 
+static size_t levenshtein_distance(const std::string & s1, const std::string & s2) {
+    const size_t l1 = s1.size();
+    const size_t l2 = s2.size();
+    std::vector<std::vector<size_t>> d(l1 + 1, std::vector<size_t>(l2 + 1));
+
+    d[0][0] = 0;
+    for(size_t i = 1; i <= l1; ++i) { d[i][0] = i; }
+    for(size_t i = 1; i <= l2; ++i) { d[0][i] = i; }
+
+    for(size_t i = 1; i <= l1; ++i) {
+        for(size_t j = 1; j <= l2; ++j) {
+            d[i][j] = std::min({
+                d[i - 1][j] + 1,
+                d[i][j - 1] + 1,
+                d[i - 1][j - 1] + (s1[i - 1] == s2[j - 1] ? 0 : 1)
+            });
+        }
+    }
+
+    return d[l1][l2];
+}
+
 static bool deserialize_string(std::istream & in, std::string & str) {
     uint32_t size;
     if (!in.read((char *)&size, sizeof(size)).fail()) {
