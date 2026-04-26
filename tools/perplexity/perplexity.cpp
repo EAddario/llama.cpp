@@ -1457,7 +1457,6 @@ static void omni_score(llama_context * ctx, const common_params & params) {
     const int max_seq = std::min(max_tasks_per_batch, (int)llama_n_seq_max(ctx));
     llama_batch batch = llama_batch_init(n_ctx, 0, 1);
 
-    std::vector<float> batch_logits((size_t)n_ctx * n_vocab);
     std::vector<std::pair<size_t, llama_token>> eval_pairs;
     std::vector<float> eval_results;
     std::vector<std::thread> workers(std::thread::hardware_concurrency());
@@ -1497,14 +1496,7 @@ static void omni_score(llama_context * ctx, const common_params & params) {
             return;
         }
 
-        llama_memory_clear(llama_get_memory(ctx), true);
-        if (!decode_helper(ctx, batch, batch_logits, n_batch, n_vocab)) {
-            LOG_ERR("%s: llama_decode() failed\n", __func__);
-            return;
-        }
-
         eval_pairs.clear();
-        std::vector<llama_token> argmax_tokens;
         for (size_t i = i0; i < i1; ++i) {
             auto & task = data[i];
             size_t li = 0;
@@ -1512,22 +1504,75 @@ static void omni_score(llama_context * ctx, const common_params & params) {
             for (size_t j = task.n_question_tokens - 1; j < task.seq_full.size() - 1; ++j) {
                 size_t logit_idx = task.i_logits + li++;
                 eval_pairs.emplace_back(logit_idx, task.seq_full[j + 1]);
-
-                const float * logits = batch_logits.data() + logit_idx * n_vocab;
-                llama_token max_id = 0;
-                float max_val = logits[0];
-                for (llama_token tid = 1; tid < n_vocab; ++tid) {
-                    if (logits[tid] > max_val) {
-                        max_val = logits[tid];
-                        max_id = tid;
-                    }
-                }
-
-                argmax_tokens.push_back(max_id);
             }
         }
 
-        compute_logprobs(batch_logits.data(), n_vocab, workers, eval_pairs, eval_results);
+        eval_results.resize(i_logits);
+        std::vector<llama_token> argmax_tokens(i_logits);
+
+        llama_memory_clear(llama_get_memory(ctx), true);
+
+        int prev_outputs = 0;
+        for (int i = 0; i < (int) batch.n_tokens; i += n_batch) {
+            const int n_tokens = std::min<int>(n_batch, batch.n_tokens - i);
+
+            llama_batch batch_view = {
+                n_tokens,
+                batch.token    + i,
+                nullptr,
+                batch.pos      + i,
+                batch.n_seq_id + i,
+                batch.seq_id   + i,
+                batch.logits   + i,
+            };
+
+            const int ret = llama_decode(ctx, batch_view);
+            if (ret != 0) {
+                LOG_ERR("%s: llama_decode() failed\n", __func__);
+                return;
+            }
+
+            int n_outputs = 0;
+            for (int k = 0; k < n_tokens; ++k) { n_outputs += batch_view.logits[k] != 0; }
+
+            if (n_outputs > 0) {
+                const float * batch_logits_ptr = llama_get_logits(ctx);
+                std::atomic<int> counter(0);
+                auto compute = [& counter, & eval_results, & argmax_tokens, & eval_pairs, prev_outputs, n_outputs, batch_logits_ptr, n_vocab] {
+                    while (true) {
+                        const int first = counter.fetch_add(K_TOKEN_CHUNK, std::memory_order_relaxed);
+                        if (first >= n_outputs) { break; }
+                        const int last = std::min(first + K_TOKEN_CHUNK, n_outputs);
+                        for (int out_idx = first; out_idx < last; ++out_idx) {
+                            const float * logits = batch_logits_ptr + out_idx * n_vocab;
+                            const llama_token expected_tok = eval_pairs[prev_outputs + out_idx].second;
+
+                            llama_token max_id = 0;
+                            float max_val = logits[0];
+                            for (llama_token tid = 1; tid < n_vocab; ++tid) {
+                                if (logits[tid] > max_val) {
+                                    max_val = logits[tid];
+                                    max_id = tid;
+                                }
+                            }
+
+                            float sum_p = 0.f;
+                            for (int tid = 0; tid < n_vocab; ++tid) { sum_p += expf(logits[tid] - max_val); }
+                            const float logprob = logits[expected_tok] - max_val - std::log(sum_p);
+                            eval_results[prev_outputs + out_idx] = logprob;
+                            argmax_tokens[prev_outputs + out_idx] = max_id;
+                        }
+                    }
+                };
+
+                size_t max_threads = std::min((size_t)(n_outputs + K_TOKEN_CHUNK - 1) / K_TOKEN_CHUNK, workers.size());
+                for (size_t th = 0; th < max_threads; ++th) { workers[th] = std::thread(compute); }
+                compute();
+                for (size_t th = 0; th < max_threads; ++th) { workers[th].join(); }
+                prev_outputs += n_outputs;
+            }
+        }
+
         size_t ir = 0;
         for (size_t i = i0; i < i1; ++i) {
             auto & task = data[i];
