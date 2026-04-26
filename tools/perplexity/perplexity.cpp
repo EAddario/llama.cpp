@@ -1403,6 +1403,200 @@ static float string_similarity(const std::string& s1, const std::string& s2) {
     return 1.0f - (float)dist / (float)max_len;
 }
 
+// Inspired by AA-Omniscience: Evaluating Cross-Domain Knowledge Reliability in Large Language Models https://arxiv.org/abs/2511.13029
+static void omni_score(llama_context * ctx, const common_params & params) {
+    const llama_model * model = llama_get_model(ctx);
+    const llama_vocab * vocab = llama_model_get_vocab(model);
+
+    auto data = load_omni_from_csv(params.prompt);
+    if (data.empty()) {
+        LOG_ERR("%s: no tasks\n", __func__);
+        return;
+    }
+
+    LOG_INF("%s : loaded %zu tasks from prompt.\n", __func__, data.size());
+
+    if (params.omni_tasks > 0 && params.omni_tasks < data.size()) {
+        LOG_INF("%s : selecting %zu random tasks\n", __func__, params.omni_tasks);
+        std::mt19937 rng(1);
+        std::vector<int> aux(data.size());
+        for (int i = 0; i < int(data.size()); ++i) { aux[i] = i; }
+        float scale = 1/(1.0f + (float)rng.max());
+        std::vector<omni_eval_entry> selected;
+        selected.resize(params.omni_tasks);
+        for (int i = 0; i < (int)params.omni_tasks; ++i) {
+            int j = (int)(scale * rng() * aux.size());
+            selected[i] = std::move(data[aux[j]]);
+            aux[j] = aux.back();
+            aux.pop_back();
+        }
+
+        data = std::move(selected);
+    }
+
+    LOG_INF("%s : tokenizing selected tasks\n", __func__);
+    for (auto & task : data) {
+        task.seq_question = common_tokenize(ctx, task.question, true);
+        task.seq_full = common_tokenize(ctx, task.question + " " + task.answer, true);
+        task.n_question_tokens = 0;
+        size_t min_len = std::min(task.seq_question.size(), task.seq_full.size());
+        for (size_t k = 0; k < min_len; ++k) {
+            if (task.seq_question[k] == task.seq_full[k]) { task.n_question_tokens++; }
+            else { break; }
+        }
+
+        if (task.n_question_tokens == 0) { task.n_question_tokens = 1; }
+        task.required_tokens = task.seq_full.size();
+    }
+
+    LOG_INF("%s : calculating Question/Answer conditional perplexity over selected tasks.\n", __func__);
+    const int n_ctx   = llama_n_ctx(ctx);
+    const int n_batch = params.n_batch;
+    const int n_vocab = llama_vocab_n_tokens(vocab);
+    constexpr int max_tasks_per_batch = 128;
+    const int max_seq = std::min(max_tasks_per_batch, (int)llama_n_seq_max(ctx));
+    llama_batch batch = llama_batch_init(n_ctx, 0, 1);
+
+    std::vector<float> batch_logits((size_t)n_ctx * n_vocab);
+    std::vector<std::pair<size_t, llama_token>> eval_pairs;
+    std::vector<float> eval_results;
+    std::vector<std::thread> workers(std::thread::hardware_concurrency());
+    double total_ppl = 0;
+    int n_done = 0;
+    int correct = 0;
+    int partial = 0;
+    int incorrect = 0;
+    int abstain = 0;
+    LOG("\n%5s\t%5s\t%20s\t%10s\n", "Task", "Id", "PPL", "Match");
+    for (size_t i0 = 0; i0 < data.size(); i0++) {
+        int n_cur = 0;
+        size_t i1 = i0;
+        size_t i_logits = 0;
+
+        common_batch_clear(batch);
+
+        while (n_cur + (int) data[i1].required_tokens <= n_ctx) {
+            int n_logits = 0;
+            const int s = i1 - i0;
+            if (s + 1 > max_seq) { break; }
+
+            for (size_t i = 0; i < data[i1].seq_full.size(); ++i) {
+                bool needs_logits = i >= data[i1].n_question_tokens - 1 && i < data[i1].seq_full.size() - 1;
+                common_batch_add(batch, data[i1].seq_full[i], i, { s }, needs_logits);
+                if (needs_logits) { n_logits++; }
+            }
+
+            data[i1].i_logits = i_logits;
+            i_logits += n_logits;
+            n_cur += (int)data[i1].required_tokens;
+            if (++i1 == data.size()) { break; }
+        }
+
+        if (i0 == i1) {
+            LOG_ERR("%s : task %zu does not fit in the context window (requires %lu tokens)\n", __func__, i0, data[i0].required_tokens);
+            return;
+        }
+
+        llama_memory_clear(llama_get_memory(ctx), true);
+        if (!decode_helper(ctx, batch, batch_logits, n_batch, n_vocab)) {
+            LOG_ERR("%s: llama_decode() failed\n", __func__);
+            return;
+        }
+
+        eval_pairs.clear();
+        std::vector<llama_token> argmax_tokens;
+        for (size_t i = i0; i < i1; ++i) {
+            auto & task = data[i];
+            size_t li = 0;
+            // The token at n_question_tokens - 1 predicts the first token of the answer
+            for (size_t j = task.n_question_tokens - 1; j < task.seq_full.size() - 1; ++j) {
+                size_t logit_idx = task.i_logits + li++;
+                eval_pairs.emplace_back(logit_idx, task.seq_full[j + 1]);
+
+                const float * logits = batch_logits.data() + logit_idx * n_vocab;
+                llama_token max_id = 0;
+                float max_val = logits[0];
+                for (llama_token tid = 1; tid < n_vocab; ++tid) {
+                    if (logits[tid] > max_val) {
+                        max_val = logits[tid];
+                        max_id = tid;
+                    }
+                }
+
+                argmax_tokens.push_back(max_id);
+            }
+        }
+
+        compute_logprobs(batch_logits.data(), n_vocab, workers, eval_pairs, eval_results);
+        size_t ir = 0;
+        for (size_t i = i0; i < i1; ++i) {
+            auto & task = data[i];
+            double sum_logprob = 0;
+            size_t num_eval_tokens = task.seq_full.size() - task.n_question_tokens;
+            if (num_eval_tokens > 0) {
+                std::string target_str = "";
+                std::string wanted_str = "";
+                for (size_t j = 0; j < num_eval_tokens; ++j) {
+                    sum_logprob += eval_results[ir];
+                    llama_token expected = eval_pairs[ir].second;
+                    llama_token wanted = argmax_tokens[ir];
+                    target_str += common_token_to_piece(ctx, expected, false);
+                    wanted_str += common_token_to_piece(ctx, wanted, false);
+                    ir++;
+                }
+
+                auto normalize = [](const std::string& s) {
+                    std::string res;
+                    for (const char c : s) {
+                        const unsigned char uc = static_cast<unsigned char>(c);
+                        if (!std::isprint(uc)) { continue; }
+                        if (std::isalnum(uc)) { res += std::tolower(uc); }
+                        else if (std::isspace(uc)) { if (res.empty() || res.back() != ' ') { res += ' '; } }
+                    }
+
+                    if (!res.empty() && res.back() == ' ') { res.pop_back(); }
+                    if (!res.empty() && res.front() == ' ') { res.erase(0, 1); }
+
+                    return res;
+                };
+
+                std::string norm_target = normalize(target_str);
+                std::string norm_wanted = normalize(wanted_str);
+                float similarity = string_similarity(norm_target, norm_wanted);
+                const auto * match_str = "Incorrect";
+                if (norm_target.empty() || norm_wanted.empty()) {
+                    match_str = "Abstain";
+                    abstain++;
+                } else if (similarity > 0.80f) {
+                    match_str = "Correct";
+                    correct++;
+                } else if (similarity > 0.50f) {
+                    match_str = "Partial";
+                    partial++;
+                } else {
+                    incorrect++;
+                }
+
+                double task_ppl = std::exp(-sum_logprob / num_eval_tokens);
+                total_ppl += task_ppl;
+                ++n_done;
+                LOG("%5zu\t%5d\t%20.4lf\t%10s\n", i+1, task.question_id, task_ppl, match_str);
+            } else {
+                LOG("%5zu\t%5d\tN/A (0 tokens)\n", i+1, task.question_id);
+            }
+        }
+
+        i0 = i1 - 1;
+    }
+
+    LOG("\n");
+    if (n_done > 0) {
+        LOG_INF("Final Q&A Average Perplexity (%d tasks): %.4lf\n", n_done, total_ppl / n_done);
+        float oi = 100.f * (float)(correct - incorrect) / (float)n_done;
+        LOG_INF("Omniscience Index %.2f (Correct: %d, Partial: %d, Incorrect: %d, Abstain: %d\n", oi, correct, partial, incorrect, abstain);
+    }
+}
+
 static bool deserialize_string(std::istream & in, std::string & str) {
     uint32_t size;
     if (!in.read((char *)&size, sizeof(size)).fail()) {
