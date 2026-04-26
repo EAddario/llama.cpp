@@ -1434,21 +1434,6 @@ static void omni_score(llama_context * ctx, const common_params & params) {
         data = std::move(selected);
     }
 
-    LOG_INF("%s : tokenizing selected tasks\n", __func__);
-    for (auto & task : data) {
-        task.seq_question = common_tokenize(ctx, task.question, true);
-        task.seq_full = common_tokenize(ctx, task.question + " " + task.answer, true);
-        task.n_question_tokens = 0;
-        size_t min_len = std::min(task.seq_question.size(), task.seq_full.size());
-        for (size_t k = 0; k < min_len; ++k) {
-            if (task.seq_question[k] == task.seq_full[k]) { task.n_question_tokens++; }
-            else { break; }
-        }
-
-        if (task.n_question_tokens == 0) { task.n_question_tokens = 1; }
-        task.required_tokens = task.seq_full.size();
-    }
-
     LOG_INF("%s : calculating Question/Answer conditional perplexity over selected tasks.\n", __func__);
     const int n_ctx   = llama_n_ctx(ctx);
     const int n_batch = params.n_batch;
@@ -1474,7 +1459,24 @@ static void omni_score(llama_context * ctx, const common_params & params) {
 
         common_batch_clear(batch);
 
-        while (n_cur + (int) data[i1].required_tokens <= n_ctx) {
+        while (i1 < data.size()) {
+            if (data[i1].seq_full.empty()) {
+                data[i1].seq_question = common_tokenize(ctx, data[i1].question, true);
+                data[i1].seq_full = common_tokenize(ctx, data[i1].question + " " + data[i1].answer, true);
+                data[i1].n_question_tokens = 0;
+                size_t min_len = std::min(data[i1].seq_question.size(), data[i1].seq_full.size());
+                for (size_t k = 0; k < min_len; ++k) {
+                    if (data[i1].seq_question[k] == data[i1].seq_full[k]) { data[i1].n_question_tokens++; }
+                    else { break; }
+                }
+                if (data[i1].n_question_tokens == 0) { data[i1].n_question_tokens = 1; }
+                data[i1].required_tokens = data[i1].seq_full.size();
+            }
+
+            if (n_cur + (int) data[i1].required_tokens > n_ctx) {
+                break;
+            }
+
             int n_logits = 0;
             const int s = i1 - i0;
             if (s + 1 > max_seq) { break; }
@@ -1488,7 +1490,7 @@ static void omni_score(llama_context * ctx, const common_params & params) {
             data[i1].i_logits = i_logits;
             i_logits += n_logits;
             n_cur += (int)data[i1].required_tokens;
-            if (++i1 == data.size()) { break; }
+            i1++;
         }
 
         if (i0 == i1) {
@@ -1629,6 +1631,10 @@ static void omni_score(llama_context * ctx, const common_params & params) {
             } else {
                 LOG("%5zu\t%5d\tN/A (0 tokens)\n", i+1, task.question_id);
             }
+            task.seq_question.clear();
+            task.seq_question.shrink_to_fit();
+            task.seq_full.clear();
+            task.seq_full.shrink_to_fit();
         }
 
         i0 = i1 - 1;
