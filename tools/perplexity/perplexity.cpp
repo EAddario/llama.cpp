@@ -1313,6 +1313,66 @@ struct omni_eval_entry {
     std::vector<llama_token> seq_full;
 };
 
+// Loads the AA-Omniscience evaluation dataset available at https://huggingface.co/datasets/ArtificialAnalysis/AA-Omniscience-Public
+static std::vector<omni_eval_entry> load_omni_from_csv(const std::string & prompt) {
+    std::vector<omni_eval_entry> res;
+    std::istringstream in(prompt);
+    std::string line;
+
+    while (std::getline(in, line)) {
+        if (line.empty() || line.find("domain,topic,question_id,question,answer") != std::string::npos) { continue; }
+
+        std::vector<std::string> fields;
+        std::string current_field;
+        bool in_quotes = false;
+        for (size_t i = 0; i < line.length(); ++i) {
+            char c = line[i];
+            if (in_quotes) {
+                if (c == '"') {
+                    if (i + 1 < line.length() && line[i + 1] == '"') {
+                        current_field += '"';
+                        ++i;
+                    } else {
+                        in_quotes = false;
+                    }
+                } else {
+                    current_field += c;
+                }
+            } else {
+                if (c == '"') {
+                    in_quotes = true;
+                } else if (c == ',') {
+                    fields.push_back(current_field);
+                    current_field.clear();
+                } else {
+                    current_field += c;
+                }
+            }
+        }
+
+        fields.push_back(current_field);
+        if (fields.size() != 5) {
+            LOG_ERR("%s: expected 5 fields, got %zu in <%s>\n", __func__, fields.size(), line.c_str());
+            continue;
+        }
+
+        omni_eval_entry entry;
+        entry.domain = fields[0];
+        entry.topic = fields[1];
+        try { entry.question_id = std::stoi(fields[2]); }
+        catch (...) {
+            LOG_ERR("%s: failed to parse question_id in <%s>\n", __func__, line.c_str());
+            continue;
+        }
+
+        entry.question = fields[3];
+        entry.answer = fields[4];
+        res.push_back(std::move(entry));
+    }
+
+    return res;
+}
+
 static size_t levenshtein_distance(const std::string & s1, const std::string & s2) {
     const size_t l1 = s1.size();
     const size_t l2 = s2.size();
