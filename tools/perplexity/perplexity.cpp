@@ -2323,7 +2323,7 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
-    if (params.hellaswag || params.winogrande || params.multiple_choice) {
+    if (params.hellaswag || params.winogrande || params.multiple_choice || params.omni) {
         params.n_parallel = std::max(4, params.n_parallel);
         params.kv_unified = true;
     } else { // Perplexity & KL divergence
@@ -2375,6 +2375,8 @@ int main(int argc, char ** argv) {
         hellaswag_score(ctx, params);
     } else if (params.winogrande) {
         winogrande_score(ctx, params);
+    } else if (params.omni) {
+        omni_score(ctx, params);
     } else if (params.multiple_choice) {
         multiple_choice_score(ctx, params);
     } else if (params.kl_divergence) {
