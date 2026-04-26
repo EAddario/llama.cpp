@@ -1300,6 +1300,19 @@ static void winogrande_score(llama_context * ctx, const common_params & params) 
     LOG_INF("Final Winogrande score(%d tasks): %.4lf +/- %.4lf\n", n_done, 100*p, sigma);
 }
 
+struct omni_eval_entry {
+    std::string domain;
+    std::string topic;
+    int question_id;
+    std::string question;
+    std::string answer;
+    size_t i_logits;
+    size_t n_question_tokens;
+    size_t required_tokens;
+    std::vector<llama_token> seq_question;
+    std::vector<llama_token> seq_full;
+};
+
 static size_t levenshtein_distance(const std::string & s1, const std::string & s2) {
     const size_t l1 = s1.size();
     const size_t l2 = s2.size();
