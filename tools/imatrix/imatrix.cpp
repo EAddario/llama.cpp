@@ -26,13 +26,18 @@
 #pragma warning(disable: 4244 4267) // possible loss of data
 #endif
 
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+
 static void print_usage(int, char ** argv) {
     LOG("\nexample usage:\n");
     LOG("\n    %s \\\n"
             "       -m model.gguf -f some-text.txt [-o imatrix.gguf] [--output-format {gguf,dat}] [--no-ppl] \\\n"
             "       [--process-output] [--chunk 123] [--save-frequency 0] [--output-frequency 10] \\\n"
             "       [--in-file imatrix-prev-0.gguf --in-file imatrix-prev-1.gguf ...] [--parse-special] \\\n"
-            "       [--show-statistics] [...]\n" , argv[0]);
+            "       [--show-statistics] [--reduce-mem] [...]\n" , argv[0]);
     LOG("\n");
 }
 
@@ -684,6 +689,16 @@ bool IMatrixCollector::collect_imatrix(struct ggml_tensor * t, bool ask, void * 
             }
         }
     }
+
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
+    if (m_params.reduce_mem && m_params.use_mmap && src0->buffer && ggml_backend_buffer_is_host(src0->buffer)) {
+        const size_t page_size = sysconf(_SC_PAGESIZE);
+        uintptr_t addr = (uintptr_t)src0->data;
+        uintptr_t aligned_addr = addr & ~(page_size - 1);
+        size_t size = ggml_nbytes(src0) + (addr - aligned_addr);
+        madvise((void *)aligned_addr, size, MADV_DONTNEED);
+    }
+#endif
 
     return true;
 }
