@@ -25,6 +25,11 @@
 #pragma warning(disable: 4244 4267) // possible loss of data
 #endif
 
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+
 struct results_perplexity {
     std::vector<llama_token> tokens;
     double                   ppl_value;
@@ -2385,6 +2390,26 @@ static void kl_divergence(llama_context * ctx, const common_params & params) {
     LOG("Same top p: %6.3lf ± %5.3lf %%\n", 100.0*same_top_p, 100.0*sqrt(same_top_p*(1.0 - same_top_p)/(kld.count - 1)));
 }
 
+static bool perplexity_cb_eval(struct ggml_tensor * t, bool ask, void * user_data) {
+    auto * params = (common_params *) user_data;
+    if (ask) {
+        if (t->op == GGML_OP_MUL_MAT_ID || t->op == GGML_OP_MUL_MAT) {
+            return true;
+        }
+        return false;
+    }
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
+    if (params->reduce_mem && params->use_mmap && t->src[0] && t->src[0]->buffer && ggml_backend_buffer_is_host(t->src[0]->buffer)) {
+        const size_t page_size = sysconf(_SC_PAGESIZE);
+        uintptr_t addr = (uintptr_t)t->src[0]->data;
+        uintptr_t aligned_addr = addr & ~(page_size - 1);
+        size_t size = ggml_nbytes(t->src[0]) + (addr - aligned_addr);
+        madvise((void *)aligned_addr, size, MADV_DONTNEED);
+    }
+#endif
+    return true;
+}
+
 int main(int argc, char ** argv) {
     std::setlocale(LC_NUMERIC, "C");
 
@@ -2397,6 +2422,11 @@ int main(int argc, char ** argv) {
 
     if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_PERPLEXITY)) {
         return 1;
+    }
+
+    if (params.reduce_mem) {
+        params.cb_eval = perplexity_cb_eval;
+        params.cb_eval_user_data = &params;
     }
 
     const int32_t n_ctx = params.n_ctx;
