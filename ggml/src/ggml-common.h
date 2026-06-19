@@ -441,6 +441,21 @@ typedef struct {
 } block_iq4_nl;
 static_assert(sizeof(block_iq4_nl) == sizeof(ggml_half) + QK4_NL/2, "wrong iq4_nl block size/padding");
 
+#define QK2_NL 32
+typedef struct {
+    ggml_half d;
+    uint8_t qs[QK2_NL/4];
+} block_iq2_nl;
+static_assert(sizeof(block_iq2_nl) == sizeof(ggml_half) + QK2_NL/4, "wrong iq2_nl block size/padding");
+
+#define QK3_NL 32
+typedef struct {
+    ggml_half d;
+    uint8_t qh[QK3_NL/8];
+    uint8_t qs[QK3_NL/4];
+} block_iq3_nl;
+static_assert(sizeof(block_iq3_nl) == sizeof(ggml_half) + QK3_NL/8 + QK3_NL/4, "wrong iq3_nl block size/padding");
+
 typedef struct {
     ggml_half d;
     uint16_t scales_h;
@@ -1109,6 +1124,14 @@ GGML_TABLE_END()
 // TODO: fix name to kvalues_iq4_nl
 GGML_TABLE_BEGIN(int8_t, kvalues_iq4nl, 16)
     -127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113,
+GGML_TABLE_END()
+
+GGML_TABLE_BEGIN(int8_t, kvalues_iq2nl, 4)
+    -127, -38, 38, 127,
+GGML_TABLE_END()
+
+GGML_TABLE_BEGIN(int8_t, kvalues_iq3nl, 8)
+    -127, -79, -45, -14, 14, 45, 79, 127,
 GGML_TABLE_END()
 
 // e2m1 values (doubled)
