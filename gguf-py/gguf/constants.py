@@ -4385,6 +4385,8 @@ class GGMLQuantizationType(IntEnum):
     MXFP4   = 39
     NVFP4   = 40
     Q1_0    = 41
+    IQ2_NL  = 42
+    IQ3_NL  = 43
 
 
 class ExpertGatingFuncType(IntEnum):
