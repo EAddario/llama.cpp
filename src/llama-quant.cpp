@@ -707,8 +707,10 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         GGML_TYPE_IQ2_XXS,
         GGML_TYPE_IQ2_XS,
         GGML_TYPE_IQ2_S,
+        GGML_TYPE_IQ2_NL,
         GGML_TYPE_IQ3_XXS,
         GGML_TYPE_IQ3_S,
+        GGML_TYPE_IQ3_NL,
         GGML_TYPE_IQ4_XS,
         GGML_TYPE_IQ4_NL,
         GGML_TYPE_Q2_K,
@@ -730,7 +732,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
 
     constexpr double EPSILON = 1e-12;
     constexpr double INFINITE = std::numeric_limits<double>::infinity();
-    constexpr uint64_t STATE_MAGIC = 0x4250572d5631; // "BPW-V1"
+    constexpr uint64_t STATE_MAGIC = 0x4250572d5632; // "BPW-V2"
     constexpr uint64_t HASH_MAGIC = 0xeabada55cafed00d;
     constexpr float boost = 2.5f;
     const char * func = __func__;
@@ -766,8 +768,10 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
             case GGML_TYPE_IQ2_XXS:
             case GGML_TYPE_IQ2_XS:
             case GGML_TYPE_IQ2_S:
+            case GGML_TYPE_IQ2_NL:
             case GGML_TYPE_IQ3_XXS:
             case GGML_TYPE_IQ3_S:
+            case GGML_TYPE_IQ3_NL:
             case GGML_TYPE_IQ4_NL:
             case GGML_TYPE_IQ4_XS:
                 return true;
@@ -2405,6 +2409,8 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
 static bool tensor_requires_imatrix(const char * tensor_name, const ggml_type dst_type, const llama_ftype ftype) {
     if (tensor_name_match_token_embd(tensor_name) || tensor_name_match_output_weight(tensor_name)) { return false; }
     switch (dst_type) {
+        case GGML_TYPE_IQ2_NL:
+        case GGML_TYPE_IQ3_NL:
         case GGML_TYPE_IQ3_XXS:
         case GGML_TYPE_IQ2_XXS:
         case GGML_TYPE_IQ2_XS:
