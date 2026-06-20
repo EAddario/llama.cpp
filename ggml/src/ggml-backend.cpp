@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <algorithm>
+#include <set>
 #include <vector>
 
 #ifdef __APPLE__
@@ -825,6 +826,7 @@ struct ggml_backend_sched {
     int debug_realloc;
     int debug_graph_size;
     int debug_prev_graph_size;
+    std::set<std::pair<const void *, const void *>> * fallback_warned;
 };
 
 #define hash_id(tensor) ggml_hash_find_or_insert(&sched->hash_set, tensor)
@@ -860,6 +862,12 @@ static int ggml_backend_sched_backend_from_buffer(ggml_backend_sched_t sched, co
     GGML_LOG_DEBUG("%s: warning: no backend supports op %s with a weight with buffer type %s used in tensor %s, the weight will need to be copied\n",
         __func__, ggml_op_desc(tensor), ggml_backend_buffer_name(buffer), tensor->name);
 #endif
+
+    // if fallback to CPU is required; warn only once per (weight, buffer)
+    if (sched->fallback_warned->insert({ tensor, buffer }).second) {
+        GGML_LOG_WARN("%s: no backend can run %s for weight %s in %s; offloading to CPU (reduced performance)\n",
+            __func__, ggml_op_desc(op), tensor->name, ggml_backend_buffer_name(buffer));
+    }
 
     return -1;
 }
@@ -1787,6 +1795,7 @@ ggml_backend_sched_t ggml_backend_sched_new(
 
     sched->galloc = ggml_gallocr_new_n(sched->bufts, n_backends);
     sched->op_offload = op_offload;
+    sched->fallback_warned = new std::set<std::pair<const void *, const void *>>();
 
     ggml_backend_sched_reset(sched);
 
@@ -1815,6 +1824,7 @@ void ggml_backend_sched_free(ggml_backend_sched_t sched) {
     free(sched->context_buffer);
     free(sched->graph.nodes);
     free(sched->graph.leafs);
+    delete sched->fallback_warned;
     free(sched);
 }
 
