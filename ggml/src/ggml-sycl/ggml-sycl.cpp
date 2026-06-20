@@ -5277,6 +5277,11 @@ static bool ggml_backend_sycl_device_supports_op(ggml_backend_dev_t dev, const g
                     return false;
                 }
 
+                // IQ2_NL/IQ3_NL have no SYCL kernels for now; fallback to CPU
+                if (a->type == GGML_TYPE_IQ2_NL || a->type == GGML_TYPE_IQ3_NL) {
+                    return false;
+                }
+
                 if (a->ne[3] != b->ne[3]) {
                     return false;
                 }
