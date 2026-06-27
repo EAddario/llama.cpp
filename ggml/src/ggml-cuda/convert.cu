@@ -433,6 +433,38 @@ static __global__ void dequantize_block_iq1_m(const void * __restrict__ vx, dst_
     }
 }
 
+//================================== non-linear quants
+
+template<typename dst_t>
+static __global__ void dequantize_block_iq2_nl(const void * __restrict__ vx, dst_t * __restrict__ yy) {
+    // One block_iq2_nl (QK2_NL weights) per CUDA block. Each thread decodes one weight;
+    // because the layout is planar (position = j + g*(QK2_NL/4)), thread tid maps to
+    // output element tid directly. Bounds are exact, so this is safe for the odd-shaped
+    // tensors (ne00 a multiple of 32 but not 256) that these types target.
+    const int64_t i = blockIdx.x;
+    const block_iq2_nl * x = (const block_iq2_nl *) vx + i;
+
+    const int64_t tid = threadIdx.x; // 0...QK2_NL-1
+    const int j = tid % (QK2_NL/4);  // qs byte index
+    const int g = tid / (QK2_NL/4);  // 2-bit group
+
+    const float d = (float) x->d;
+    yy[i*QK2_NL + tid] = d * iq2_nl_value(x->qs, j, g);
+}
+
+template<typename dst_t>
+static __global__ void dequantize_block_iq3_nl(const void * __restrict__ vx, dst_t * __restrict__ yy) {
+    const int64_t i = blockIdx.x;
+    const block_iq3_nl * x = (const block_iq3_nl *) vx + i;
+
+    const int64_t tid = threadIdx.x; // 0...QK3_NL-1
+    const int j = tid % (QK3_NL/4);  // qs byte index
+    const int g = tid / (QK3_NL/4);  // 2-bit group
+
+    const float d = (float) x->d;
+    yy[i*QK3_NL + tid] = d * iq3_nl_value(x->qs, x->qh, j, g);
+}
+
 template<typename dst_t>
 static __global__ void dequantize_block_iq4_nl(const void * __restrict__ vx, dst_t * __restrict__ yy) {
 
@@ -594,6 +626,18 @@ static void dequantize_row_iq1_s_cuda(const void * vx, dst_t * y, const int64_t 
 }
 
 template<typename dst_t>
+static void dequantize_row_iq2_nl_cuda(const void * vx, dst_t * y, const int64_t k, cudaStream_t stream) {
+    const int nb = k / QK2_NL;
+    dequantize_block_iq2_nl<<<nb, QK2_NL, 0, stream>>>(vx, y);
+}
+
+template<typename dst_t>
+static void dequantize_row_iq3_nl_cuda(const void * vx, dst_t * y, const int64_t k, cudaStream_t stream) {
+    const int nb = k / QK3_NL;
+    dequantize_block_iq3_nl<<<nb, QK3_NL, 0, stream>>>(vx, y);
+}
+
+template<typename dst_t>
 static void dequantize_row_iq4_nl_cuda(const void * vx, dst_t * y, const int64_t k, cudaStream_t stream) {
     const int nb = (k + QK_K - 1) / QK_K;
     dequantize_block_iq4_nl<<<nb, 32, 0, stream>>>(vx, y);
@@ -748,6 +792,10 @@ to_fp16_cuda_t ggml_get_to_fp16_cuda(ggml_type type) {
             return dequantize_row_iq1_s_cuda;
         case GGML_TYPE_IQ1_M:
             return dequantize_row_iq1_m_cuda;
+        case GGML_TYPE_IQ2_NL:
+            return dequantize_row_iq2_nl_cuda;
+        case GGML_TYPE_IQ3_NL:
+            return dequantize_row_iq3_nl_cuda;
         case GGML_TYPE_IQ4_NL:
             return dequantize_row_iq4_nl_cuda;
         case GGML_TYPE_IQ4_XS:
@@ -805,6 +853,10 @@ to_fp32_cuda_t ggml_get_to_fp32_cuda(ggml_type type) {
             return dequantize_row_iq1_m_cuda;
         case GGML_TYPE_IQ4_NL:
             return dequantize_row_iq4_nl_cuda;
+        case GGML_TYPE_IQ2_NL:
+            return dequantize_row_iq2_nl_cuda;
+        case GGML_TYPE_IQ3_NL:
+            return dequantize_row_iq3_nl_cuda;
         case GGML_TYPE_IQ4_XS:
             return dequantize_row_iq4_xs_cuda;
         case GGML_TYPE_IQ3_S:
