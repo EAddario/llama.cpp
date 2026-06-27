@@ -8404,6 +8404,12 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         }
     }
 
+    for (ggml_type type_a : {GGML_TYPE_IQ2_NL, GGML_TYPE_IQ3_NL}) {
+        for (int64_t n : {16, 32, 64, 128, 256, 512}) {
+            test_cases.emplace_back(new test_mul_mat(type_a, GGML_TYPE_F32, 256, n, 256, {1, 1}, {1, 1}));
+        }
+    }
+
 #if 0
     {
         // Test paths in OpenCL
