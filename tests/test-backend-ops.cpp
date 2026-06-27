@@ -2397,12 +2397,21 @@ struct test_set_rows : public test_case {
 
     double max_nmse_err() override {
         if (type == GGML_TYPE_Q4_0 || type == GGML_TYPE_Q4_1 || type == GGML_TYPE_IQ4_NL ||
-            type == GGML_TYPE_Q5_0 || type == GGML_TYPE_Q5_1 || type == GGML_TYPE_Q8_0) {
+            type == GGML_TYPE_Q5_0 || type == GGML_TYPE_Q5_1 || type == GGML_TYPE_Q8_0 ||
+            type == GGML_TYPE_IQ2_NL || type == GGML_TYPE_IQ3_NL) {
             // estimate what the max nmse error would be if one quantized value is
             // off by one. The test values are distributed in [-1,1], so it'll be
             // roughly (2.0 / 2^bits)^2, divided by the mean square value of the reference,
             // which is roughly 0.25 times the number of elements.
             double err_estimate = 1.0f/8.0f;
+            if (type == GGML_TYPE_IQ2_NL) {
+                // iq2_nl has only 4 non-linear levels: coarsest quant
+                err_estimate *= 4.0f;
+            }
+            if (type == GGML_TYPE_IQ3_NL) {
+                // iq3_nl has 8 non-linear levels: coarser than the 16-level iq4_nl
+                err_estimate *= 2.0f;
+            }
             if (type == GGML_TYPE_Q5_0 || type == GGML_TYPE_Q5_1) {
                 err_estimate /= 2.0f;
             }
@@ -2911,12 +2920,21 @@ struct test_cpy : public test_case {
             return 0.0;
         }
         if (type_dst == GGML_TYPE_Q4_0 || type_dst == GGML_TYPE_Q4_1 || type_dst == GGML_TYPE_IQ4_NL ||
-            type_dst == GGML_TYPE_Q5_0 || type_dst == GGML_TYPE_Q5_1 || type_dst == GGML_TYPE_Q8_0) {
+            type_dst == GGML_TYPE_Q5_0 || type_dst == GGML_TYPE_Q5_1 || type_dst == GGML_TYPE_Q8_0 ||
+            type_dst == GGML_TYPE_IQ2_NL || type_dst == GGML_TYPE_IQ3_NL) {
             // estimate what the max nmse error would be if one quantized value is
             // off by one. The test values are distributed in [-150,150], so it'll be
             // roughly (150*2.0 / 2^bits)^2, divided by the mean square value of the reference,
             // which is roughly 0.25*150^2 times the number of elements.
             double err_estimate = 1.0f/8.0f * 150.0f;
+            if (type_dst == GGML_TYPE_IQ2_NL) {
+                // iq2_nl has only 4 non-linear levels: coarsest quant, widest spacing
+                err_estimate *= 8.0f;
+            }
+            if (type_dst == GGML_TYPE_IQ3_NL) {
+                // iq3_nl has 8 non-linear levels: wider spacing than the 16-level iq4_nl
+                err_estimate *= 4.0f;
+            }
             if (type_dst == GGML_TYPE_IQ4_NL) {
                 // iq4_nl values are a bit more spread out
                 err_estimate *= 2.0f;
