@@ -2405,11 +2405,12 @@ struct test_set_rows : public test_case {
             // which is roughly 0.25 times the number of elements.
             double err_estimate = 1.0f/8.0f;
             if (type == GGML_TYPE_IQ2_NL) {
-                // iq2_nl has only 4 non-linear levels (coarsest quant) so we increase error estimate
+                // Using iq4_nl as reference, iq2_nl has only 4 non-linear levels (coarsest quant)
+                // so we increase error estimate to keep the same ratio (4 non-linear levels * 4.0f)
                 err_estimate *= 4.0f;
             }
             if (type == GGML_TYPE_IQ3_NL) {
-                // iq3_nl has 8 non-linear levels: coarser than the 16-level iq4_nl
+                // iq3_nl has 8 non-linear levels: coarser than the 16-level iq4_nl (8 non-linear levels * 2.0f)
                 err_estimate *= 2.0f;
             }
             if (type == GGML_TYPE_Q5_0 || type == GGML_TYPE_Q5_1) {
