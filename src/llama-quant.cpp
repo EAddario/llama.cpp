@@ -770,9 +770,11 @@ static bool tensor_requires_imatrix(const char * tensor_name, const ggml_type ds
     }
     switch (dst_type) {
         case GGML_TYPE_IQ3_XXS:
+        case GGML_TYPE_IQ3_NL:
         case GGML_TYPE_IQ2_XXS:
         case GGML_TYPE_IQ2_XS:
         case GGML_TYPE_IQ2_S:
+        case GGML_TYPE_IQ2_NL:
         case GGML_TYPE_IQ1_M:
         case GGML_TYPE_IQ1_S:
             return true;
