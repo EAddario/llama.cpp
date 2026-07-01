@@ -2650,24 +2650,6 @@ void dequantize_row_iq1_m(const block_iq1_m * GGML_RESTRICT x, float * GGML_REST
     }
 }
 
-void dequantize_row_iq4_nl(const block_iq4_nl * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k) {
-    assert(k % QK4_NL == 0);
-    const int64_t nb = k / QK4_NL;
-
-    for (int i = 0; i < nb; i++) {
-
-        const uint8_t * qs = x[i].qs;
-
-        const float d = GGML_FP16_TO_FP32(x[i].d);
-        for (int j = 0; j < QK4_NL/2; ++j) {
-            y[j+       0] = d * kvalues_iq4nl[qs[j] & 0xf];
-            y[j+QK4_NL/2] = d * kvalues_iq4nl[qs[j] >>  4];
-        }
-        y  += QK4_NL;
-        qs += QK4_NL/2;
-    }
-}
-
 void dequantize_row_iq2_nl(const block_iq2_nl * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k) {
     assert(k % QK2_NL == 0);
     const int64_t nb = k / QK2_NL;
@@ -2702,6 +2684,24 @@ void dequantize_row_iq3_nl(const block_iq3_nl * GGML_RESTRICT x, float * GGML_RE
             }
         }
         y += QK3_NL;
+    }
+}
+
+void dequantize_row_iq4_nl(const block_iq4_nl * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k) {
+    assert(k % QK4_NL == 0);
+    const int64_t nb = k / QK4_NL;
+
+    for (int i = 0; i < nb; i++) {
+
+        const uint8_t * qs = x[i].qs;
+
+        const float d = GGML_FP16_TO_FP32(x[i].d);
+        for (int j = 0; j < QK4_NL/2; ++j) {
+            y[j+       0] = d * kvalues_iq4nl[qs[j] & 0xf];
+            y[j+QK4_NL/2] = d * kvalues_iq4nl[qs[j] >>  4];
+        }
+        y  += QK4_NL;
+        qs += QK4_NL/2;
     }
 }
 
@@ -5118,6 +5118,7 @@ void quantize_row_iq4_xs_ref(const float * GGML_RESTRICT x, block_iq4_xs * GGML_
     quantize_iq4_xs(x, y, 1, k, NULL);
 }
 
+// =============================== 2.5 & 3.5 bpw
 size_t quantize_iq2_nl(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float * quant_weights) {
     GGML_ASSERT(n_per_row%QK2_NL == 0);
     int64_t nblock = n_per_row/QK2_NL;
@@ -5696,10 +5697,6 @@ bool ggml_validate_row_data(enum ggml_type type, const void * data, size_t nbyte
             {
                 VALIDATE_ROW_DATA_D_F16_IMPL(block_iq4_xs, data, nb);
             } break;
-        case GGML_TYPE_IQ4_NL:
-            {
-                VALIDATE_ROW_DATA_D_F16_IMPL(block_iq4_nl, data, nb);
-            } break;
         case GGML_TYPE_IQ2_NL:
             {
                 VALIDATE_ROW_DATA_D_F16_IMPL(block_iq2_nl, data, nb);
@@ -5707,6 +5704,10 @@ bool ggml_validate_row_data(enum ggml_type type, const void * data, size_t nbyte
         case GGML_TYPE_IQ3_NL:
             {
                 VALIDATE_ROW_DATA_D_F16_IMPL(block_iq3_nl, data, nb);
+            } break;
+        case GGML_TYPE_IQ4_NL:
+            {
+                VALIDATE_ROW_DATA_D_F16_IMPL(block_iq4_nl, data, nb);
             } break;
 
         case GGML_TYPE_I8:
