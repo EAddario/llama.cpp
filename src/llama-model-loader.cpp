@@ -1033,11 +1033,21 @@ static bool weight_buft_supported(const llama_hparams & hparams, ggml_tensor * w
 // find the first buffer type in the list that can use the tensor
 static ggml_backend_buffer_type_t select_weight_buft(const llama_hparams & hparams, ggml_tensor * tensor, ggml_op op, const buft_list_t * buft_list) {
     GGML_ASSERT(!buft_list->empty());
+    bool skipped_gpu = false;
     for (const auto & cur : *buft_list) {
         ggml_backend_dev_t cur_dev = cur.first;
         ggml_backend_buffer_type_t cur_buft = cur.second;
         if (weight_buft_supported(hparams, tensor, op, cur_buft, cur_dev)) {
+            if (skipped_gpu) {
+                LLAMA_LOG_WARN("%s: no GPU backend supports operation %s for type %s in tensor %s; offloading to CPU (reduced performance)\n",
+                    __func__, ggml_op_name(op), ggml_type_name(tensor->type), tensor->name);
+            }
+
             return cur_buft;
+        }
+
+        if (ggml_backend_dev_type(cur_dev) == GGML_BACKEND_DEVICE_TYPE_GPU) {
+            skipped_gpu = true;
         }
     }
 
