@@ -1267,10 +1267,7 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
         case GGML_OP_SOLVE_TRI:
         case GGML_OP_MUL_MAT:
         case GGML_OP_MUL_MAT_ID:
-            return has_simdgroup_reduction &&
-                op->src[0]->type != GGML_TYPE_NVFP4 &&
-                op->src[0]->type != GGML_TYPE_IQ2_NL &&
-                op->src[0]->type != GGML_TYPE_IQ3_NL;
+            return has_simdgroup_reduction && op->src[0]->type != GGML_TYPE_NVFP4;
         case GGML_OP_SET:
         case GGML_OP_CPY:
         case GGML_OP_DUP:
@@ -1288,6 +1285,8 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
                            case GGML_TYPE_Q4_1:
                            case GGML_TYPE_Q5_0:
                            case GGML_TYPE_Q5_1:
+                           case GGML_TYPE_IQ2_NL:
+                           case GGML_TYPE_IQ3_NL:
                            case GGML_TYPE_IQ4_NL:
                            case GGML_TYPE_I32:
                                 return true;
@@ -1330,9 +1329,7 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
                 };
             }
         case GGML_OP_GET_ROWS:
-            return op->src[0]->type != GGML_TYPE_NVFP4 &&
-                   op->src[0]->type != GGML_TYPE_IQ2_NL &&
-                   op->src[0]->type != GGML_TYPE_IQ3_NL;
+            return op->src[0]->type != GGML_TYPE_NVFP4;
         case GGML_OP_SET_ROWS:
             {
                 if (op->src[0]->type != GGML_TYPE_F32) {
@@ -1348,6 +1345,8 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
                     case GGML_TYPE_Q4_1:
                     case GGML_TYPE_Q5_0:
                     case GGML_TYPE_Q5_1:
+                    case GGML_TYPE_IQ2_NL:
+                    case GGML_TYPE_IQ3_NL:
                     case GGML_TYPE_IQ4_NL:
                         return true;
                     default:
