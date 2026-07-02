@@ -1340,11 +1340,6 @@ void ggml_vec_dot_iq4_xs_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs,
 
 // ============================ 4-bit non-linear quants
 
-void quantize_row_iq4_nl(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k) {
-    assert(k % QK4_NL == 0);
-    quantize_row_iq4_nl_ref(x, y, k);
-}
-
 void quantize_row_iq2_nl(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k) {
     assert(k % QK2_NL == 0);
     quantize_row_iq2_nl_ref(x, y, k);
@@ -1353,6 +1348,11 @@ void quantize_row_iq2_nl(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, 
 void quantize_row_iq3_nl(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k) {
     assert(k % QK3_NL == 0);
     quantize_row_iq3_nl_ref(x, y, k);
+}
+
+void quantize_row_iq4_nl(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k) {
+    assert(k % QK4_NL == 0);
+    quantize_row_iq4_nl_ref(x, y, k);
 }
 
 void quantize_row_iq4_xs(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k) {

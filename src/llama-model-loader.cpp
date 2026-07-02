@@ -64,6 +64,8 @@ static std::string llama_model_ftype_name(llama_ftype ftype) {
         case LLAMA_FTYPE_MOSTLY_IQ3_XXS:  return "IQ3_XXS - 3.0625 bpw";
         case LLAMA_FTYPE_MOSTLY_IQ1_S:    return "IQ1_S - 1.5625 bpw";
         case LLAMA_FTYPE_MOSTLY_IQ1_M:    return "IQ1_M - 1.75 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ2_NL:   return "IQ2_NL - 2.5 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ3_NL:   return "IQ3_NL - 3.5 bpw";
         case LLAMA_FTYPE_MOSTLY_IQ4_NL:   return "IQ4_NL - 4.5 bpw";
         case LLAMA_FTYPE_MOSTLY_IQ4_XS:   return "IQ4_XS - 4.25 bpw";
         case LLAMA_FTYPE_MOSTLY_IQ3_S:    return "IQ3_S - 3.4375 bpw";
@@ -757,6 +759,8 @@ llama_model_loader::llama_model_loader(
             case GGML_TYPE_IQ3_XXS: ftype = LLAMA_FTYPE_MOSTLY_IQ3_XXS; break;
             case GGML_TYPE_IQ1_S:   ftype = LLAMA_FTYPE_MOSTLY_IQ1_S;   break;
             case GGML_TYPE_IQ1_M:   ftype = LLAMA_FTYPE_MOSTLY_IQ1_M;   break;
+            case GGML_TYPE_IQ2_NL:  ftype = LLAMA_FTYPE_MOSTLY_IQ2_NL;  break;
+            case GGML_TYPE_IQ3_NL:  ftype = LLAMA_FTYPE_MOSTLY_IQ3_NL;  break;
             case GGML_TYPE_IQ4_NL:  ftype = LLAMA_FTYPE_MOSTLY_IQ4_NL;  break;
             case GGML_TYPE_IQ4_XS:  ftype = LLAMA_FTYPE_MOSTLY_IQ4_XS;  break;
             case GGML_TYPE_IQ3_S:   ftype = LLAMA_FTYPE_MOSTLY_IQ3_S;   break;
@@ -1033,11 +1037,21 @@ static bool weight_buft_supported(const llama_hparams & hparams, ggml_tensor * w
 // find the first buffer type in the list that can use the tensor
 static ggml_backend_buffer_type_t select_weight_buft(const llama_hparams & hparams, ggml_tensor * tensor, ggml_op op, const buft_list_t * buft_list) {
     GGML_ASSERT(!buft_list->empty());
+    bool skipped_gpu = false;
     for (const auto & cur : *buft_list) {
         ggml_backend_dev_t cur_dev = cur.first;
         ggml_backend_buffer_type_t cur_buft = cur.second;
         if (weight_buft_supported(hparams, tensor, op, cur_buft, cur_dev)) {
+            if (skipped_gpu) {
+                LLAMA_LOG_WARN("%s: no GPU backend supports operation %s for type %s in tensor %s; offloading to CPU (reduced performance)\n",
+                    __func__, ggml_op_name(op), ggml_type_name(tensor->type), tensor->name);
+            }
+
             return cur_buft;
+        }
+
+        if (ggml_backend_dev_type(cur_dev) == GGML_BACKEND_DEVICE_TYPE_GPU) {
+            skipped_gpu = true;
         }
     }
 

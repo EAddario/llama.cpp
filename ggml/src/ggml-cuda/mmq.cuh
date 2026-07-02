@@ -2693,10 +2693,6 @@ template <int mmq_y, bool need_check> static __device__ __forceinline__ void loa
     float * x_df = (float *) (x_qs + txs.qs);
 #endif // defined(AMD_MFMA_AVAILABLE) || defined(TURING_MMA_AVAILABLE) || defined(AMD_WMMA_AVAILABLE)
 
-    // qs[j] holds the 2-bit code for elements j + 8*g (g = 0..3), so QI2_NL == 2
-    // input ints map to 8 decoded Q8_0-style ints per block. Each thread decodes
-    // one 4-byte half of qs (kqsx) into the four ints for its g values, exactly as
-    // vec_dot_iq2_nl_q8_1 does, storing each where the Q8_0 dot product reads it.
     constexpr int threads_per_row = MMQ_ITER_K / (4 * QR2_NL);
     constexpr int nrows = warp_size / threads_per_row;
     const int txi = warp_size > threads_per_row ? threadIdx.x % threads_per_row : threadIdx.x;
@@ -2768,9 +2764,6 @@ template <int mmq_y, bool need_check> static __device__ __forceinline__ void loa
     float * x_df = (float *) (x_qs + txs.qs);
 #endif // defined(AMD_MFMA_AVAILABLE) || defined(TURING_MMA_AVAILABLE) || defined(AMD_WMMA_AVAILABLE)
 
-    // Like IQ2_NL, but the codebook index gains a 3rd bit from qh, transposed:
-    // bit j of qh[g] is the MSB of element j + 8*g. iq3_nl_value reassembles it,
-    // matching dequantize_row_iq3_nl and vec_dot_iq3_nl_q8_1 exactly.
     constexpr int threads_per_row = MMQ_ITER_K / (4 * QR3_NL);
     constexpr int nrows = warp_size / threads_per_row;
     const int txi = warp_size > threads_per_row ? threadIdx.x % threads_per_row : threadIdx.x;
@@ -2797,7 +2790,6 @@ template <int mmq_y, bool need_check> static __device__ __forceinline__ void loa
                 v |= (iq3_nl_value(qs, qh, 4*kqsx + b, g) & 0xff) << (8*b);
             }
 
-            // 8 decoded ints per block (QK3_NL elements, 4 per int); int k holds elements [4k, 4k+3].
             const int k0 = kbx*(QK3_NL/4) + 2*g + kqsx;
 #if defined(AMD_MFMA_AVAILABLE) || defined(TURING_MMA_AVAILABLE) || defined(AMD_WMMA_AVAILABLE)
             x_qs[i*MMQ_MMA_TILE_X_K_Q8_0 + k0] = v;
@@ -4330,10 +4322,10 @@ extern DECL_MMQ_CASE(GGML_TYPE_IQ2_S);
 extern DECL_MMQ_CASE(GGML_TYPE_IQ3_XXS);
 extern DECL_MMQ_CASE(GGML_TYPE_IQ3_S);
 extern DECL_MMQ_CASE(GGML_TYPE_IQ1_S);
-extern DECL_MMQ_CASE(GGML_TYPE_IQ4_XS);
 extern DECL_MMQ_CASE(GGML_TYPE_IQ2_NL);
 extern DECL_MMQ_CASE(GGML_TYPE_IQ3_NL);
 extern DECL_MMQ_CASE(GGML_TYPE_IQ4_NL);
+extern DECL_MMQ_CASE(GGML_TYPE_IQ4_XS);
 
 // -------------------------------------------------------------------------------------------------------------------------
 

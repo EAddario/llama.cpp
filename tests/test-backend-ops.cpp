@@ -2396,9 +2396,9 @@ struct test_set_rows : public test_case {
     }
 
     double max_nmse_err() override {
-        if (type == GGML_TYPE_Q4_0 || type == GGML_TYPE_Q4_1 || type == GGML_TYPE_IQ4_NL ||
-            type == GGML_TYPE_Q5_0 || type == GGML_TYPE_Q5_1 || type == GGML_TYPE_Q8_0 ||
-            type == GGML_TYPE_IQ2_NL || type == GGML_TYPE_IQ3_NL) {
+        if (type == GGML_TYPE_IQ2_NL || type == GGML_TYPE_IQ3_NL ||
+            type == GGML_TYPE_Q4_0   || type == GGML_TYPE_Q4_1   || type == GGML_TYPE_IQ4_NL ||
+            type == GGML_TYPE_Q5_0   || type == GGML_TYPE_Q5_1   || type == GGML_TYPE_Q8_0) {
             // estimate what the max nmse error would be if one quantized value is
             // off by one. The test values are distributed in [-1,1], so it'll be
             // roughly (2.0 / 2^bits)^2, divided by the mean square value of the reference,
@@ -2925,20 +2925,20 @@ struct test_cpy : public test_case {
         if (type_src == type_dst) {
             return 0.0;
         }
-        if (type_dst == GGML_TYPE_Q4_0 || type_dst == GGML_TYPE_Q4_1 || type_dst == GGML_TYPE_IQ4_NL ||
-            type_dst == GGML_TYPE_Q5_0 || type_dst == GGML_TYPE_Q5_1 || type_dst == GGML_TYPE_Q8_0 ||
-            type_dst == GGML_TYPE_IQ2_NL || type_dst == GGML_TYPE_IQ3_NL) {
+        if (type_dst == GGML_TYPE_IQ2_NL || type_dst == GGML_TYPE_IQ3_NL ||
+            type_dst == GGML_TYPE_Q4_0   || type_dst == GGML_TYPE_Q4_1   || type_dst == GGML_TYPE_IQ4_NL ||
+            type_dst == GGML_TYPE_Q5_0   || type_dst == GGML_TYPE_Q5_1   || type_dst == GGML_TYPE_Q8_0) {
             // estimate what the max nmse error would be if one quantized value is
             // off by one. The test values are distributed in [-150,150], so it'll be
             // roughly (150*2.0 / 2^bits)^2, divided by the mean square value of the reference,
             // which is roughly 0.25*150^2 times the number of elements.
             double err_estimate = 1.0f/8.0f * 150.0f;
             if (type_dst == GGML_TYPE_IQ2_NL) {
-                // iq2_nl has only 4 non-linear levels: coarsest quant, widest spacing
+                // 4 non-linear levels (coarsest) and more spread out so we increase error tolerance further
                 err_estimate *= 8.0f;
             }
             if (type_dst == GGML_TYPE_IQ3_NL) {
-                // iq3_nl has 8 non-linear levels: wider spacing than the 16-level iq4_nl
+                // 8 non-linear levels (coarser than iq4_nl's 16) and a bit more spread out so we increase error tolerance
                 err_estimate *= 4.0f;
             }
             if (type_dst == GGML_TYPE_IQ4_NL) {
@@ -7658,8 +7658,8 @@ static const ggml_type all_types[] = {
     // GGML_TYPE_TQ1_0, GGML_TYPE_TQ2_0, // TODO: implement for all backends
     GGML_TYPE_IQ2_XXS, GGML_TYPE_IQ2_XS, GGML_TYPE_IQ2_S,
     GGML_TYPE_IQ3_XXS, GGML_TYPE_IQ1_S, GGML_TYPE_IQ1_M,
-    GGML_TYPE_IQ4_NL, GGML_TYPE_IQ3_S, GGML_TYPE_IQ4_XS,
-    GGML_TYPE_IQ2_NL, GGML_TYPE_IQ3_NL,
+    GGML_TYPE_IQ2_NL, GGML_TYPE_IQ3_NL, GGML_TYPE_IQ4_NL,
+    GGML_TYPE_IQ3_S, GGML_TYPE_IQ4_XS,
 };
 
 static const ggml_type base_types[] = {
@@ -7684,8 +7684,8 @@ static const ggml_type other_types[] = {
     // GGML_TYPE_TQ1_0, GGML_TYPE_TQ2_0, // TODO: implement for all backends
     GGML_TYPE_IQ2_XS, GGML_TYPE_IQ2_S,
     GGML_TYPE_IQ3_XXS, GGML_TYPE_IQ1_S, GGML_TYPE_IQ1_M,
-    GGML_TYPE_IQ4_NL, GGML_TYPE_IQ3_S, GGML_TYPE_IQ4_XS,
-    GGML_TYPE_IQ2_NL, GGML_TYPE_IQ3_NL,
+    GGML_TYPE_IQ2_NL, GGML_TYPE_IQ3_NL, GGML_TYPE_IQ4_NL,
+    GGML_TYPE_IQ3_S, GGML_TYPE_IQ4_XS,
     GGML_TYPE_BF16,
 };
 
@@ -8467,15 +8467,16 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         }
     }
 
+    test_cases.emplace_back(new test_mul_mat(GGML_TYPE_Q4_0, GGML_TYPE_F32, 2880, 32, 2880, {1, 1}, {1, 1}));
+    test_cases.emplace_back(new test_mul_mat(GGML_TYPE_Q8_0, GGML_TYPE_F32, 2880, 32, 2880, {1, 1}, {1, 1}));
+    test_cases.emplace_back(new test_mul_mat(GGML_TYPE_MXFP4, GGML_TYPE_F32, 2880, 32, 2880, {1, 1}, {1, 1}));
+
+    // Large-batch MUL_MAT cases to stress MMQ tiles
     for (ggml_type type_a : {GGML_TYPE_IQ2_NL, GGML_TYPE_IQ3_NL}) {
         for (int64_t n : {16, 32, 64, 128, 256, 512}) {
             test_cases.emplace_back(new test_mul_mat(type_a, GGML_TYPE_F32, 256, n, 256, {1, 1}, {1, 1}));
         }
     }
-
-    test_cases.emplace_back(new test_mul_mat(GGML_TYPE_Q4_0, GGML_TYPE_F32, 2880, 32, 2880, {1, 1}, {1, 1}));
-    test_cases.emplace_back(new test_mul_mat(GGML_TYPE_Q8_0, GGML_TYPE_F32, 2880, 32, 2880, {1, 1}, {1, 1}));
-    test_cases.emplace_back(new test_mul_mat(GGML_TYPE_MXFP4, GGML_TYPE_F32, 2880, 32, 2880, {1, 1}, {1, 1}));
 
 #if 0
     {

@@ -1328,27 +1328,6 @@ class IQ1_M(__Quant, qtype=GGMLQuantizationType.IQ1_M):
         return (dl * (grid + delta)).reshape((n_blocks, -1))
 
 
-class IQ4_NL(__Quant, qtype=GGMLQuantizationType.IQ4_NL):
-    kvalues = (-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113)
-
-    @classmethod
-    def dequantize_blocks(cls, blocks: np.ndarray) -> np.ndarray:
-        n_blocks = blocks.shape[0]
-
-        d, qs = np.hsplit(blocks, [2])
-
-        d = d.view(np.float16).astype(np.float32)
-
-        qs = qs.reshape((n_blocks, -1, 1, cls.block_size // 2)) >> np.array([0, 4], dtype=np.uint8).reshape((1, 1, 2, 1))
-
-        qs = (qs & np.uint8(0x0F)).reshape((n_blocks, -1, 1))
-
-        kvalues = np.array(cls.kvalues, dtype=np.int8).reshape(1, 1, 16)
-        qs = np.take_along_axis(kvalues, qs, axis=-1).astype(np.float32).reshape((n_blocks, -1))
-
-        return (d * qs)
-
-
 class IQ2_NL(__Quant, qtype=GGMLQuantizationType.IQ2_NL):
     kvalues = (-127, -38, 38, 127)
 
@@ -1390,6 +1369,27 @@ class IQ3_NL(__Quant, qtype=GGMLQuantizationType.IQ3_NL):
         qs = (lo | (hi << np.uint8(2))).reshape((n_blocks, -1, 1))
 
         kvalues = np.array(cls.kvalues, dtype=np.int8).reshape(1, 1, 8)
+        qs = np.take_along_axis(kvalues, qs, axis=-1).astype(np.float32).reshape((n_blocks, -1))
+
+        return (d * qs)
+
+
+class IQ4_NL(__Quant, qtype=GGMLQuantizationType.IQ4_NL):
+    kvalues = (-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113)
+
+    @classmethod
+    def dequantize_blocks(cls, blocks: np.ndarray) -> np.ndarray:
+        n_blocks = blocks.shape[0]
+
+        d, qs = np.hsplit(blocks, [2])
+
+        d = d.view(np.float16).astype(np.float32)
+
+        qs = qs.reshape((n_blocks, -1, 1, cls.block_size // 2)) >> np.array([0, 4], dtype=np.uint8).reshape((1, 1, 2, 1))
+
+        qs = (qs & np.uint8(0x0F)).reshape((n_blocks, -1, 1))
+
+        kvalues = np.array(cls.kvalues, dtype=np.int8).reshape(1, 1, 16)
         qs = np.take_along_axis(kvalues, qs, axis=-1).astype(np.float32).reshape((n_blocks, -1))
 
         return (d * qs)
