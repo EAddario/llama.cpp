@@ -43,11 +43,11 @@ typedef matrix<bfloat, 2, 4> bfloat2x4;
 #endif
 
 constexpr constant static float kvalues_iq2nl_f[4] = {
-    -127.f, -38.f, 38.f, 127.f
+    -127.f, -49.f, 9.f, 88.f
 };
 
 constexpr constant static float kvalues_iq3nl_f[8] = {
-    -127.f, -79.f, -45.f, -14.f, 14.f, 45.f, 79.f, 127.f
+    -127.f, -78.f, -45.f, -18.f, 3.f, 30.f, 62.f, 107.f
 };
 
 #define QK_NL 16
