@@ -492,7 +492,6 @@ static __global__ void dequantize_block_iq3_nl(const void * __restrict__ vx, dst
 
 template<typename dst_t>
 static __global__ void dequantize_block_iq4_nl(const void * __restrict__ vx, dst_t * __restrict__ yy) {
-
     const int64_t i   = blockIdx.x;
     const block_iq4_nl * x = (const block_iq4_nl *) vx + i*(QK_K/QK4_NL);
 
@@ -507,7 +506,6 @@ static __global__ void dequantize_block_iq4_nl(const void * __restrict__ vx, dst
         y[j+16] = ggml_cuda_cast<dst_t>(d * kvalues_iq4nl[q4[j] >>  4]);
     }
 }
-
 //================================== microscaling quants
 
 template<typename dst_t>

@@ -244,6 +244,9 @@ static bool tensor_allows_quantization(const llama_model_quantize_params * param
     // do not quantize expert gating tensors
     quantize &= name.find("ffn_gate_inp.weight") == std::string::npos;
 
+    // do not quantize the i32 token-id -> expert-id routing table (DeepSeek-V4)
+    quantize &= name.find("ffn_gate_tid2eid.weight") == std::string::npos;
+
     // these are very small (e.g. 4x4)
     quantize &= name.find("altup")  == std::string::npos;
     quantize &= name.find("laurel") == std::string::npos;
@@ -550,22 +553,22 @@ static ggml_type llama_tensor_get_type_impl(quantize_state_impl & qs, ggml_type 
     return new_type;
 }
 
-// determine the ggml_type that this tensor should be quantized to
-static ggml_type llama_tensor_get_type(quantize_state_impl & qs,
-    const llama_model_quantize_params * params,
-    const ggml_tensor * tensor,
-    const ggml_type default_type,
-    const tensor_metadata & tm
-) {
-    if (params->target_bpw != -1.0f || params->target_size != -1) { return tensor->type; }  // defer tensor type selection to target_bpw_type()
-    if (!tensor_allows_quantization(params, qs.model.arch, tensor)) { return tensor->type; }
-    if (params->token_embedding_type < GGML_TYPE_COUNT && tm.category == TENSOR_CATEGORY_TOKEN_EMBD) { return params->token_embedding_type; }
-    if (params->output_tensor_type < GGML_TYPE_COUNT && tm.category == TENSOR_CATEGORY_OUTPUT) { return params->output_tensor_type; }
+// outer wrapper: determine the ggml_type that this tensor should be quantized to
+static ggml_type llama_tensor_get_type(quantize_state_impl & qs, const llama_model_quantize_params * params, const ggml_tensor * tensor, ggml_type default_type, const tensor_metadata & tm) {
+    if (!tensor_allows_quantization(params, qs.model.arch, tensor)) {
+        return tensor->type;
+    }
+    if (params->token_embedding_type < GGML_TYPE_COUNT && tm.category == TENSOR_CATEGORY_TOKEN_EMBD) {
+        return params->token_embedding_type;
+    }
+    if (params->output_tensor_type < GGML_TYPE_COUNT && tm.category == TENSOR_CATEGORY_OUTPUT) {
+        return params->output_tensor_type;
+    }
 
     ggml_type new_type = default_type;
 
     // get more optimal quantization type based on the tensor shape, layer, etc.
-    if (!params->pure && ggml_is_quantized(default_type)) {
+    if (ggml_is_quantized(default_type)) {
         // if the user provided tensor types, use those
         bool manual = false;
         if (!qs.tensor_type_patterns.empty()) {
@@ -584,7 +587,7 @@ static ggml_type llama_tensor_get_type(quantize_state_impl & qs,
         }
 
         // otherwise, use the standard logic
-        if (!manual) { new_type = llama_tensor_get_type_impl(qs, new_type, tensor, params->ftype, tm.category); }
+        if (!manual && !params->pure) { new_type = llama_tensor_get_type_impl(qs, new_type, tensor, params->ftype, tm.category); }
 
         // if incompatible tensor shape, fallback to a compatible type
         new_type = tensor_type_fallback(qs, tensor, new_type);
