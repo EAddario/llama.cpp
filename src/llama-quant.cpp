@@ -135,7 +135,7 @@ struct quantize_state_impl {
     int i_ffn_down     = 0;
     int i_ffn_gate     = 0;
     int i_ffn_up       = 0;
-    int n_fallback    = 0;
+    int n_fallback     = 0;
     bool has_imatrix = false;
 
     // used to figure out if a model has tied embeddings (tok_embd shares weights with output)
@@ -263,6 +263,10 @@ static bool tensor_allows_quantization(const llama_model_quantize_params * param
     quantize &= name.find("ssm_conv1d") == std::string::npos;
     quantize &= name.find("shortconv.conv.weight") == std::string::npos;
 
+    // do not quantize MiniMax's indexer projection weights, they are tiny
+    quantize &= name.find("indexer.k_proj.weight") == std::string::npos;
+    quantize &= name.find("indexer.q_proj.weight") == std::string::npos;
+
     // do not quantize RWKV's small yet 2D weights
     quantize &= name.find("time_mix_first.weight") == std::string::npos;
     quantize &= name.find("time_mix_w0.weight") == std::string::npos;
@@ -291,6 +295,10 @@ static bool tensor_allows_quantization(const llama_model_quantize_params * param
     quantize &= name.find(".rel_pos")       == std::string::npos;
     quantize &= name.find(".patch_embd")    == std::string::npos;
     quantize &= name.find(".patch_merger")  == std::string::npos;
+
+    // audio codebook
+    quantize &= name.find("a.rvq.codebook")  == std::string::npos;
+    quantize &= name.find("mm.a.code_embd")  == std::string::npos;
 
     return quantize;
 }
@@ -569,17 +577,17 @@ static ggml_type llama_tensor_get_type_impl(quantize_state_impl & qs, ggml_type 
     return new_type;
 }
 
-// outer wrapper: determine the ggml_type that this tensor should be quantized to
-static ggml_type llama_tensor_get_type(quantize_state_impl & qs, const llama_model_quantize_params * params, const ggml_tensor * tensor, ggml_type default_type, const tensor_metadata & tm) {
-    if (!tensor_allows_quantization(params, qs.model.arch, tensor)) {
-        return tensor->type;
-    }
-    if (params->token_embedding_type < GGML_TYPE_COUNT && tm.category == TENSOR_CATEGORY_TOKEN_EMBD) {
-        return params->token_embedding_type;
-    }
-    if (params->output_tensor_type < GGML_TYPE_COUNT && tm.category == TENSOR_CATEGORY_OUTPUT) {
-        return params->output_tensor_type;
-    }
+// determine the ggml_type that this tensor should be quantized to
+static ggml_type llama_tensor_get_type(quantize_state_impl & qs,
+    const llama_model_quantize_params * params,
+    const ggml_tensor * tensor,
+    const ggml_type default_type,
+    const tensor_metadata & tm
+) {
+    if (params->target_bpw != -1.0f || params->target_size != -1) { return tensor->type; }  // defer tensor type selection to target_bpw_type()
+    if (!tensor_allows_quantization(params, qs.model.arch, tensor)) { return tensor->type; }
+    if (params->token_embedding_type < GGML_TYPE_COUNT && tm.category == TENSOR_CATEGORY_TOKEN_EMBD) { return params->token_embedding_type; }
+    if (params->output_tensor_type < GGML_TYPE_COUNT && tm.category == TENSOR_CATEGORY_OUTPUT) { return params->output_tensor_type; }
 
     ggml_type new_type = default_type;
 
@@ -2793,15 +2801,15 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
     // mmap consistently increases speed on Linux, and also increases speed on Windows with
     // hot cache. It may cause a slowdown on macOS, possibly related to free memory.
 #if defined(__linux__) || defined(_WIN32)
-    constexpr bool use_mmap = true;
+    constexpr llama_load_mode load_mode = LLAMA_LOAD_MODE_MMAP;
 #else
-    constexpr bool use_mmap = false;
+    constexpr llama_load_mode load_mode = LLAMA_LOAD_MODE_NONE;
 #endif
 
     const llama_model_kv_override * kv_overrides = params->kv_overrides;
     std::vector<std::string> splits = {};
     llama_model_loader ml(/*metadata*/ nullptr, /*set_tensor_data*/ nullptr, /*set_tensor_data_ud*/ nullptr,
-        fname_inp, splits, /*file*/ nullptr, use_mmap, /*use_direct_io*/ false, /*check_tensors*/ true, /*no_alloc*/ false, kv_overrides, nullptr);
+        fname_inp, splits, /*file*/ nullptr, /*load_mode*/ load_mode, /*check_tensors*/ true, /*no_alloc*/ false, /*load_mtp*/ true, kv_overrides, nullptr);
     ml.init_mappings(false); // no prefetching
 
     auto mparams = llama_model_default_params();
@@ -3302,6 +3310,7 @@ llama_model * llama_quant_model_from_metadata(const llama_quant_model_desc * des
     model->hparams.n_embd_head_k_full = desc->n_embd_head_k;
     model->hparams.n_embd_head_v_full = desc->n_embd_head_v;
     model->hparams.n_layer_all        = desc->n_layer;
+    GGML_ASSERT(desc->n_layer > 0 && desc->n_layer <= LLAMA_MAX_LAYERS);
     model->hparams.n_expert           = desc->n_expert;
 
     for (uint32_t i = 0; i < desc->n_layer; i++) {
