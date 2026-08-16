@@ -121,13 +121,18 @@ static __device__ __forceinline__ void dequantize_q8_0(const void * vx, const in
 
 //================================== non-linear quants
 
+// the kernels that take a dequantize_kernel_t write 2 values per thread, at iqs and iqs + qk/2.
+// the helpers below return that pair, so those kernels need a qr of 2. this is NOT QR2_NL/QR3_NL,
+// which are 4 because MMVQ and MMQ read 4 values per qs byte
+#define QR_NL_DEQUANTIZE 2
+
 static __device__ __forceinline__ void dequantize_iq2_nl(const void * vx, const int64_t ib, const int iqs, float2 & v){
     const block_iq2_nl * x = (const block_iq2_nl *) vx;
 
     const float d = (float) x[ib].d;
 
     // the layout is planar: element p sits in group p/(QK2_NL/4), byte p%(QK2_NL/4).
-    // iqs pairs p with p + QK2_NL/2, so both values come from the same qs byte
+    // the pair p and p + QK2_NL/2 is groups g and g+2, so both come from the same qs byte
     const int j = iqs % (QK2_NL/4);
     const int g = iqs / (QK2_NL/4);
 
