@@ -497,6 +497,7 @@ static ggml_type llama_tensor_get_type_impl(quantize_state_impl & qs, ggml_type 
         ++qs.i_attention_wv;
     } else if (category == TENSOR_CATEGORY_ATTENTION_K) {
         if (qs.model.hparams.n_expert == 8) {
+            // for the 8-expert model, bumping this to Q8_0 trades just ~128MB
             new_type = ftype == LLAMA_FTYPE_MOSTLY_IQ2_NL || ftype == LLAMA_FTYPE_MOSTLY_IQ3_NL ? GGML_TYPE_IQ4_NL : GGML_TYPE_Q8_0;
         }
         else if (ftype == LLAMA_FTYPE_MOSTLY_IQ3_XS) { new_type = GGML_TYPE_IQ3_XXS; }
