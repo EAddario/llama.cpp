@@ -377,8 +377,7 @@ static ggml_type llama_tensor_get_type_impl(quantize_state_impl & qs, ggml_type 
     };
 
     // for arches that share the same tensor between the token embeddings and the output,
-    //  we quantize the token embeddings with the quantization of the output tensor
-    // ToDo: Optimize MOSTLY_IQ2_NL and MOSTLY_IQ3_NL recipe
+    // we quantize the token embeddings with the quantization of the output tensor
     if (category == TENSOR_CATEGORY_OUTPUT || (qs.has_tied_embeddings && category == TENSOR_CATEGORY_TOKEN_EMBD)) {
         if (qs.params->output_tensor_type < GGML_TYPE_COUNT) { new_type = qs.params->output_tensor_type; }
         else {
@@ -490,7 +489,6 @@ static ggml_type llama_tensor_get_type_impl(quantize_state_impl & qs, ggml_type 
         }
         if (qs.model.hparams.n_expert == 8) {
             // for the 8-expert model, bumping this to Q8_0 trades just ~128MB
-            // TODO: explore better strategies
             new_type = ftype == LLAMA_FTYPE_MOSTLY_IQ2_NL || ftype == LLAMA_FTYPE_MOSTLY_IQ3_NL ? GGML_TYPE_IQ4_NL : GGML_TYPE_Q8_0;
         }
 
