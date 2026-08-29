@@ -61,6 +61,7 @@ Options:
 * `--token-embedding-type` use a specific quant type for the token embeddings tensor
 * `--keep-split` generate the quantized model in the same shards as the input file instead of a single quantized file
 * `--dry-run` simulate the quantization process
+* `--max-buffer-size MiB` cap the amount of tensor rows kept in memory while quantizing one tensor (default: 8192). Lower it to quantize models with very large tensors on a machine with little RAM
 
 Advanced options:
 * `--tensor-type` quantize specific tensor(s) to specific quant types. Supports regex syntax. May be specified multiple times
@@ -142,7 +143,7 @@ python convert_hf_to_gguf.py --mmproj --outfile mmproj-gemma-4-E2B-it-Q8_0.gguf 
 ```
 
 ```bash
-# quantize model targeting a specific bpw average reusing previous target computations in deault file (e.g. input-model-8fd7a8bef0803042.bpw_state)
+# quantize model targeting a specific bpw average reusing previous target computations in default file (e.g. input-model-8fd7a8bef0803042.bpw_state)
 ./llama-quantize --target-bpw 2.345 ---state-file --imatrix imatrix.gguf input-model-f32.gguf 8
 ```
 
