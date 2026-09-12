@@ -1326,6 +1326,45 @@ void ggml_vec_dot_iq4_xs_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs,
     *s = sumf;
 }
 
+void ggml_vec_dot_iq2_k_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
+    assert(nrc == 1);
+    UNUSED(nrc);
+    UNUSED(bx);
+    UNUSED(by);
+    UNUSED(bs);
+    assert(n % QK_K == 0);
+
+    const block_iq2_k * GGML_RESTRICT x = vx;
+    const block_q8_K  * GGML_RESTRICT y = vy;
+
+    const int nb = n / QK_K;
+
+    float sumf = 0;
+    for (int ibl = 0; ibl < nb; ++ibl) {
+        const float d2d8 = GGML_CPU_FP16_TO_FP32(x[ibl].d) * y[ibl].d;
+        const int8_t * GGML_RESTRICT q8 = y[ibl].qs;
+
+        int32_t sum = 0;
+        for (int ib = 0; ib < QK_K/16; ++ib) {
+            const int g = ib / 2;
+            const int ls = (int)((x[ibl].scales[ib / 2] >> 4 * (ib % 2)) & 0xf) - 8;
+            const int ph = x[ibl].extra & (1 << ib) ? IQ2K_PHASE : 0;
+            const uint8_t * qs = x[ibl].qs + 32 * (g / 4) + 16 * (ib % 2);
+            int sumi = 0;
+            for (int j = 0; j < 16; ++j) {
+                const uint8_t q = (qs[j] >> 2 * (g % 4)) & 3;
+                sumi += q8[16 * ib + j] * (kvalues_iq2k[q] + ph);
+            }
+
+            sum += ls * sumi;
+        }
+
+        sumf += d2d8 * sum;
+    }
+
+    *s = sumf;
+}
+
 void ggml_vec_dot_iq3_k_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
     assert(nrc == 1);
     UNUSED(nrc);
@@ -1501,6 +1540,11 @@ void quantize_row_iq4_nl(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, 
 void quantize_row_iq4_xs(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k) {
     assert(k % QK_K == 0);
     quantize_iq4_xs(x, y, 1, k, NULL);
+}
+
+void quantize_row_iq2_k(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k) {
+    assert(k % QK_K == 0);
+    quantize_iq2_k(x, y, 1, k, NULL);
 }
 
 void quantize_row_iq3_k(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k) {
