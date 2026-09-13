@@ -77,12 +77,6 @@
 #define ggml_gemm_q8_0_4x4_q8_0_generic ggml_gemm_q8_0_4x4_q8_0
 #define ggml_gemm_q8_0_4x8_q8_0_generic ggml_gemm_q8_0_4x8_q8_0
 #elif defined(__aarch64__) || defined(__arm__) || defined(_M_ARM) || defined(_M_ARM64)
-// quants.c
-#define ggml_vec_dot_iq2_k_q8_K_generic ggml_vec_dot_iq2_k_q8_K
-#define ggml_vec_dot_iq3_k_q8_K_generic ggml_vec_dot_iq3_k_q8_K
-#define ggml_vec_dot_iq4_k_q8_K_generic ggml_vec_dot_iq4_k_q8_K
-#define ggml_vec_dot_iq5_k_q8_K_generic ggml_vec_dot_iq5_k_q8_K
-#define ggml_vec_dot_iq6_k_q8_K_generic ggml_vec_dot_iq6_k_q8_K
 // repack.cpp
 #define ggml_quantize_mat_q8_K_4x4_generic ggml_quantize_mat_q8_K_4x4
 #define ggml_quantize_mat_q8_K_4x8_generic ggml_quantize_mat_q8_K_4x8
