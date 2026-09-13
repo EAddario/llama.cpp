@@ -3969,7 +3969,7 @@ void ggml_vec_dot_iq2_k_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
         __m256i sumi = _mm256_setzero_si256();
         for (int j = 0; j < QK_K / 128; ++j) {
             const __m256i lbits = _mm256_loadu_si256((const __m256i *)qs);
-            const qs += 32;
+            qs += 32;
             const __m256i idx[4] = {
                 _mm256_and_si256(lbits, m2),
                 _mm256_and_si256(_mm256_srli_epi16(lbits, 2), m2),
@@ -3982,7 +3982,7 @@ void ggml_vec_dot_iq2_k_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
 
                 const __m256i v = _mm256_add_epi8(_mm256_shuffle_epi8(values, idx[k]), iqk_phase_pair(IQ2K_PHASE, extra, ib));
                 const __m256i p16 = mul_add_epi8(v, _mm256_loadu_si256((const __m256i *)q8));
-                const q8 += 32;
+                q8 += 32;
                 const __m256i p = _mm256_madd_epi16(p16, iqk_scale_pair((sc & 0xf) - 8, (sc >> 4) - 8));
                 sumi = _mm256_add_epi32(p, sumi);
             }
@@ -4048,7 +4048,7 @@ void ggml_vec_dot_iq3_k_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
 
                 const __m256i v = _mm256_add_epi8(_mm256_shuffle_epi8(values, idx[k]), iqk_phase_pair(IQ3K_PHASE, extra, ib));
                 const __m256i p16 = mul_add_epi8(v, _mm256_loadu_si256((const __m256i *)q8));
-                const q8 += 32;
+                q8 += 32;
                 const __m256i p = _mm256_madd_epi16(p16, iqk_scale_pair(signs & (1 << (ib + 0)) ? -ls1 : ls1, signs & (1 << (ib + 1)) ? -ls2 : ls2));
                 sumi = _mm256_add_epi32(p, sumi);
             }
@@ -4094,7 +4094,7 @@ void ggml_vec_dot_iq4_k_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
         __m256i sumi = _mm256_setzero_si256();
         for (int ib = 0; ib < QK_K / 16; ib += 2) {
             const __m128i lbits = _mm_loadu_si128((const __m128i *)qs);
-            const qs += 16;
+            qs += 16;
             const __m256i idx = _mm256_and_si256(MM256_SET_M128I(_mm_srli_epi16(lbits, 4), lbits), m4);
 
             const uint8_t hb = x[ibl].scales_h[ib / 4];
@@ -4103,7 +4103,7 @@ void ggml_vec_dot_iq4_k_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
 
             const __m256i v = _mm256_add_epi8(_mm256_shuffle_epi8(values, idx), iqk_phase_pair(IQ4K_PHASE, extra, ib));
             const __m256i p16 = mul_add_epi8(v, _mm256_loadu_si256((const __m256i *)q8));
-            const q8 += 32;
+            q8 += 32;
             const __m256i p = _mm256_madd_epi16(p16, iqk_scale_pair(ls1, ls2));
             sumi = _mm256_add_epi32(p, sumi);
         }
@@ -4152,7 +4152,7 @@ void ggml_vec_dot_iq5_k_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
         for (int j = 0; j < QK_K/128; ++j) {
             const __m256i l0 = _mm256_loadu_si256((const __m256i *)qs);
             const __m256i l1 = _mm256_loadu_si256((const __m256i *)(qs + 32));
-            const qs += 64;
+            qs += 64;
             const __m256i idx[4] = {
                 _mm256_or_si256(_mm256_and_si256(l0, m4), _mm256_and_si256(_mm256_slli_epi16(hbits, 4), mh)),
                 _mm256_or_si256(_mm256_and_si256(_mm256_srli_epi16(l0, 4), m4), _mm256_and_si256(_mm256_slli_epi16(hbits, 3), mh)),
@@ -4169,7 +4169,7 @@ void ggml_vec_dot_iq5_k_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
 
                 const __m256i v = _mm256_add_epi8(iqk_lookup_32(values, idx[k]), iqk_phase_pair(IQ5K_PHASE, extra, ib));
                 const __m256i p16 = mul_add_epi8(v, _mm256_loadu_si256((const __m256i *)q8));
-                const q8 += 32;
+                q8 += 32;
                 const __m256i p = _mm256_madd_epi16(p16, iqk_scale_pair(ls1, ls2));
                 sumi = _mm256_add_epi32(p, sumi);
             }
@@ -4220,9 +4220,9 @@ void ggml_vec_dot_iq6_k_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
         for (int j = 0; j < QK_K / 128; ++j) {
             const __m256i l0 = _mm256_loadu_si256((const __m256i *)qs);
             const __m256i l1 = _mm256_loadu_si256((const __m256i *)(qs + 32));
-            const qs += 64;
+            qs += 64;
             const __m256i hbits = _mm256_loadu_si256((const __m256i *)qh);
-            const qh += 32;
+            qh += 32;
             const __m256i idx[4] = {
                 _mm256_or_si256(_mm256_and_si256(l0, m4), _mm256_and_si256(_mm256_slli_epi16(hbits, 4), mh)),
                 _mm256_or_si256(_mm256_and_si256(_mm256_srli_epi16(l0, 4), m4), _mm256_and_si256(_mm256_slli_epi16(hbits, 2), mh)),
@@ -4235,7 +4235,7 @@ void ggml_vec_dot_iq6_k_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
 
                 const __m256i v = _mm256_add_epi8(iqk_lookup_64(values, idx[k]), iqk_phase_pair(IQ6K_PHASE, extra, ib));
                 const __m256i p16 = mul_add_epi8(v, _mm256_loadu_si256((const __m256i *)q8));
-                const q8 += 32;
+                q8 += 32;
                 const __m256i p = _mm256_madd_epi16(p16, iqk_scale_pair(x[ibl].scales[ib], x[ibl].scales[ib + 1]));
                 sumi = _mm256_add_epi32(p, sumi);
             }

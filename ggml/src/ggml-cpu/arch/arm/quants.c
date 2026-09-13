@@ -4478,7 +4478,6 @@ void ggml_vec_dot_iq6_k_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
         const int8_t  * q8 = y[ibl].qs;
         const uint16_t extra = x[ibl].extra;
 
-        // at 4.1x int32 headroom, no more than four superblocks may share one accumulator
         int32x4_t acc = vdupq_n_s32(0);
         for (int g = 0; g < QK_K / 32; g += 2) {
 
