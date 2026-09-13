@@ -387,17 +387,23 @@ static ggml_type tensor_type_fallback(quantize_state_impl & qs, const ggml_tenso
             case GGML_TYPE_IQ2_XXS:
             case GGML_TYPE_IQ2_XS:
             case GGML_TYPE_IQ2_S:
+            case GGML_TYPE_IQ2_K:
             case GGML_TYPE_IQ3_XXS:
-            case GGML_TYPE_IQ3_S:   // types on the right: block size 32
-            case GGML_TYPE_IQ4_XS:  return_type = GGML_TYPE_IQ4_NL; break;
+            case GGML_TYPE_IQ3_S:
+            case GGML_TYPE_IQ3_K:
+            case GGML_TYPE_IQ4_XS:  // types on the right: block size 32
+            case GGML_TYPE_IQ4_K:   return_type = GGML_TYPE_IQ4_NL; break;
             case GGML_TYPE_Q2_0:
             case GGML_TYPE_Q2_K:
             case GGML_TYPE_Q3_K:
             case GGML_TYPE_TQ1_0:
             case GGML_TYPE_TQ2_0:   return_type = GGML_TYPE_Q4_0;   break;
             case GGML_TYPE_Q4_K:    return_type = GGML_TYPE_Q5_0;   break;
-            case GGML_TYPE_Q5_K:    return_type = GGML_TYPE_Q5_1;   break;
-            case GGML_TYPE_Q6_K:    return_type = GGML_TYPE_Q8_0;   break;
+            // a fallback must not lose bits, so these two take the targets of Q5_K and Q6_K
+            case GGML_TYPE_Q5_K:
+            case GGML_TYPE_IQ5_K:   return_type = GGML_TYPE_Q5_1;   break;
+            case GGML_TYPE_Q6_K:
+            case GGML_TYPE_IQ6_K:   return_type = GGML_TYPE_Q8_0;   break;
             default:
                 if (qk_k <= 32) {
                     // the target is already a 32-block type, so there is no smaller block to demote to
