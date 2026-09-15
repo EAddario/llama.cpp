@@ -1908,12 +1908,7 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
             }
         case GGML_OP_GET_ROWS:
             return op->src[0]->type != GGML_TYPE_NVFP4 &&
-                   op->src[0]->type != GGML_TYPE_TQ1_0 &&
-                   op->src[0]->type != GGML_TYPE_IQ2_K &&
-                   op->src[0]->type != GGML_TYPE_IQ3_K &&
-                   op->src[0]->type != GGML_TYPE_IQ4_K &&
-                   op->src[0]->type != GGML_TYPE_IQ5_K &&
-                   op->src[0]->type != GGML_TYPE_IQ6_K;
+                   op->src[0]->type != GGML_TYPE_TQ1_0;
         case GGML_OP_SET_ROWS:
             {
                 if (op->src[0]->type == GGML_TYPE_F16) {
