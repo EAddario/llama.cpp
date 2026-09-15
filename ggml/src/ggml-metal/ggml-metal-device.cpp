@@ -1032,6 +1032,18 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mv(ggml_meta
                 nr0 = N_R0_IQ4_K;
                 smem = 32*sizeof(float);
             } break;
+        case GGML_TYPE_IQ5_K:
+            {
+                nsg = N_SG_IQ5_K;
+                nr0 = N_R0_IQ5_K;
+                smem = 32*sizeof(float);
+            } break;
+        case GGML_TYPE_IQ6_K:
+            {
+                nsg = N_SG_IQ6_K;
+                nr0 = N_R0_IQ6_K;
+                smem = 64*sizeof(float);
+            } break;
         default:
             {
                 GGML_LOG_ERROR("Asserting on type %d\n", (int) tsrc0);
@@ -1318,6 +1330,18 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mv_id(ggml_m
                 nsg = N_SG_IQ4_K;
                 nr0 = N_R0_IQ4_K;
                 smem = 32*sizeof(float);
+            } break;
+        case GGML_TYPE_IQ5_K:
+            {
+                nsg = N_SG_IQ5_K;
+                nr0 = N_R0_IQ5_K;
+                smem = 32*sizeof(float);
+            } break;
+        case GGML_TYPE_IQ6_K:
+            {
+                nsg = N_SG_IQ6_K;
+                nr0 = N_R0_IQ6_K;
+                smem = 64*sizeof(float);
             } break;
         default:
             {

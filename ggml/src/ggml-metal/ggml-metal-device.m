@@ -1503,9 +1503,7 @@ static bool ggml_metal_supports_mul_mat_op(
         op->src[0]->type == GGML_TYPE_NVFP4 ||
         op->src[0]->type == GGML_TYPE_TQ1_0 ||
         op->src[0]->type == GGML_TYPE_IQ2_K ||
-        op->src[0]->type == GGML_TYPE_IQ3_K ||
-        op->src[0]->type == GGML_TYPE_IQ5_K ||
-        op->src[0]->type == GGML_TYPE_IQ6_K) {
+        op->src[0]->type == GGML_TYPE_IQ3_K) {
         return false;
     }
 
