@@ -28,9 +28,13 @@ static __device__ __forceinline__ int get_int_b4(const void * x, const int & i32
     return ((const int *) x)[i32]; // assume at least 4 byte alignment
 }
 
+static __device__ __forceinline__ int get_int_from_table_u8_ph(const int & q, const int8_t * table, const int & ph) {
+    return  ((table[(q >>  0) & 0xFF] + ph) & 0xFF)        | (((table[(q >>  8) & 0xFF] + ph) & 0xFF) <<  8) |
+           (((table[(q >> 16) & 0xFF] + ph) & 0xFF) << 16) | (((table[(q >> 24) & 0xFF] + ph) & 0xFF) << 24);
+}
+
 static __device__ __forceinline__ int get_int_from_table_u8(const int & q, const int8_t * table) {
-    return  (table[(q >>  0) & 0xFF] & 0xFF)        | ((table[(q >>  8) & 0xFF] & 0xFF) <<  8) |
-           ((table[(q >> 16) & 0xFF] & 0xFF) << 16) | ((table[(q >> 24) & 0xFF] & 0xFF) << 24);
+    return get_int_from_table_u8_ph(q, table, 0);
 }
 
 // q4 contains 8 indices with 4 bit each.
@@ -1385,6 +1389,7 @@ static __device__ __forceinline__ float vec_dot_iq4_xs_q8_1(
 }
 
 #define VDR_IQ2_K_Q8_1_MMVQ 2
+#define VDR_IQ2_K_Q8_1_MMQ  2
 
 static __device__ __forceinline__ float vec_dot_iq2_k_q8_1(
     const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
@@ -1419,6 +1424,7 @@ static __device__ __forceinline__ float vec_dot_iq2_k_q8_1(
 }
 
 #define VDR_IQ3_K_Q8_1_MMVQ 2
+#define VDR_IQ3_K_Q8_1_MMQ  2
 
 static __device__ __forceinline__ float vec_dot_iq3_k_q8_1(
     const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
@@ -1458,6 +1464,7 @@ static __device__ __forceinline__ float vec_dot_iq3_k_q8_1(
 }
 
 #define VDR_IQ4_K_Q8_1_MMVQ 4
+#define VDR_IQ4_K_Q8_1_MMQ  2
 
 static __device__ __forceinline__ float vec_dot_iq4_k_q8_1(
     const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
@@ -1492,6 +1499,7 @@ static __device__ __forceinline__ float vec_dot_iq4_k_q8_1(
 }
 
 #define VDR_IQ5_K_Q8_1_MMVQ 4
+#define VDR_IQ5_K_Q8_1_MMQ  2
 
 static __device__ __forceinline__ float vec_dot_iq5_k_q8_1(
     const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
@@ -1529,6 +1537,7 @@ static __device__ __forceinline__ float vec_dot_iq5_k_q8_1(
 }
 
 #define VDR_IQ6_K_Q8_1_MMVQ 4
+#define VDR_IQ6_K_Q8_1_MMQ  2
 
 static __device__ __forceinline__ float vec_dot_iq6_k_q8_1(
     const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
