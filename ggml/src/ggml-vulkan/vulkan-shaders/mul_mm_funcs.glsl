@@ -297,6 +297,51 @@ void load_a_to_shmem(const uint pos_a, const uint row, const uint col, const uin
 
     store_a(col, k_pair, FLOAT_TYPEV2(v.xy));
     store_a(col, k_pair + 1, FLOAT_TYPEV2(v.zw));
+#elif defined(DATA_A_IQ5_K)
+    const uint idx = pos_a + col * p.stride_a / LOAD_VEC_A + row;
+    const uint k_pair = row * LOAD_VEC_A / 2;
+
+    const uint ib = idx / 64;
+    const uint ib16 = (idx % 64) / 4;
+    const uint g = ib16 / 2;
+    const uint iq = 8 * (g / 2) + 4 * (ib16 & 1) + (idx % 4);
+    const uint ih = 4 * (ib16 & 1) + (idx % 4);
+
+    const uint sl = (data_a[ib].scales_l[ib16 / 2] >> (4 * (ib16 & 1))) & 0xF;
+    const uint sh = (data_a[ib].scales_h[ib16 / 4] >> (2 * (ib16 % 4))) & 3;
+    const uint qshift = 4 * (g & 1);
+    const uint qsw = (uint(data_a_packed32[ib].qs[iq]) >> qshift) & 0x0F0F0F0F;
+    const uint qhw = (uint(data_a_packed32[ib].qh[ih]) >> g) & 0x01010101;
+    u8vec4 qs = unpack8(qsw | (qhw << 4));
+
+    const float ph = float(((uint(data_a[ib].extra) >> ib16) & 1) * IQ5K_PHASE);
+    const float d = float(data_a[ib].d) * float(int(sl | (sh << 4)) - 32);
+    const vec4 v = d * (vec4(kvalues_iq5k[qs.x], kvalues_iq5k[qs.y], kvalues_iq5k[qs.z], kvalues_iq5k[qs.w]) + ph);
+
+    store_a(col, k_pair, FLOAT_TYPEV2(v.xy));
+    store_a(col, k_pair + 1, FLOAT_TYPEV2(v.zw));
+#elif defined(DATA_A_IQ6_K)
+    const uint idx = pos_a + col * p.stride_a / LOAD_VEC_A + row;
+    const uint k_pair = row * LOAD_VEC_A / 2;
+
+    const uint ib = idx / 64;
+    const uint ib16 = (idx % 64) / 4;
+    const uint g = ib16 / 2;
+    const uint iq = 8 * (g / 2) + 4 * (ib16 & 1) + (idx % 4);
+    const uint ih = 8 * (g / 4) + 4 * (ib16 & 1) + (idx % 4);
+
+    const uint qshift = 4 * (g & 1);
+    const uint hshift = 2 * (g & 3);
+    const uint qsw = (uint(data_a_packed32[ib].qs[iq]) >> qshift) & 0x0F0F0F0F;
+    const uint qhw = (uint(data_a_packed32[ib].qh[ih]) >> hshift) & 0x03030303;
+    u8vec4 qs = unpack8(qsw | (qhw << 4));
+
+    const float ph = float(((uint(data_a[ib].extra) >> ib16) & 1) * IQ6K_PHASE);
+    const float d = float(data_a[ib].d) * float(data_a[ib].scales[ib16]);
+    const vec4 v = d * (vec4(kvalues_iq6k[qs.x], kvalues_iq6k[qs.y], kvalues_iq6k[qs.z], kvalues_iq6k[qs.w]) + ph);
+
+    store_a(col, k_pair, FLOAT_TYPEV2(v.xy));
+    store_a(col, k_pair + 1, FLOAT_TYPEV2(v.zw));
 #elif defined(DATA_A_IQ4_NL)
     const uint idx = pos_a + col * p.stride_a / LOAD_VEC_A + row;
     const uint k_pair = row * LOAD_VEC_A / 4;

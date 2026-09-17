@@ -252,8 +252,7 @@ bool is_k_quant(const std::string& type_name) {
 }
 
 bool is_iqk_quant(const std::string& type_name) {
-    return type_name == "iq2_k" || type_name == "iq3_k" ||
-           type_name == "iq5_k" || type_name == "iq6_k";
+    return type_name == "iq2_k" || type_name == "iq3_k";
 }
 
 bool is_lut_quant(const std::string& type_name) {

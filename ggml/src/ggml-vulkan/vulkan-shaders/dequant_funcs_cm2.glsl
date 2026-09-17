@@ -1359,6 +1359,118 @@ f16vec4 dequantFuncIQ4_K_v(const in decodeBufIQ4_K bl, const in uint blockCoords
 }
 #endif
 
+#if defined(DATA_A_IQ5_K)
+layout(buffer_reference, std430, buffer_reference_align = 2) buffer decodeBufIQ5_K {
+   block_iq5_k block;
+};
+
+layout(buffer_reference, std430, buffer_reference_align = 4) buffer decodeBufIQ5_K_packed32 {
+   block_iq5_k_packed32 block;
+};
+
+float16_t dequantFuncIQ5_K(const in decodeBufIQ5_K bl, const in uint blockCoords[2], const in uint coordInBlock[2])
+{
+    const float16_t d = bl.block.d;
+    const uint idx = coordInBlock[1];
+
+    const uint ib16 = idx >> 4;                                     // 0..15
+    const uint g    = ib16 >> 1;                                    // 32-element chunk
+    const uint t    = idx & 31;                                     // position in the chunk
+
+    const uint sl = (bl.block.scales_l[ib16 / 2] >> (4 * (ib16 & 1))) & 0xF;
+    const uint sh = (bl.block.scales_h[ib16 / 4] >> (2 * (ib16 % 4))) & 3;
+    const uint qs = (bl.block.qs[32 * (g >> 1) + t] >> (4 * (g & 1))) & 0xF;
+    const uint qh = (bl.block.qh[t] >> g) & 1;
+    const uint q  = qs | (qh << 4);
+
+    const float ph = float(((uint(bl.block.extra) >> ib16) & 1) * IQ5K_PHASE);
+
+    float16_t ret = d * float16_t(int(sl | (sh << 4)) - 32) * float16_t(float(kvalues_iq5k[q]) + ph);
+    return ret;
+}
+
+f16vec4 dequantFuncIQ5_K_v(const in decodeBufIQ5_K bl, const in uint blockCoords[2], const in uint coordInBlock[2])
+{
+    decodeBufIQ5_K_packed32 bl32 = decodeBufIQ5_K_packed32(bl);
+    const float16_t d = bl.block.d;
+    const uint idx = coordInBlock[1];
+
+    const uint ib16 = idx >> 4;                                     // 0..15
+    const uint g    = ib16 >> 1;                                    // 32-element chunk
+    const uint tw   = (idx & 31) >> 2;                              // word within the chunk
+
+    const uint sl = (bl32.block.scales_l[ib16 / 8] >> (4 * (ib16 % 8))) & 0xF;
+    const uint sh = (bl32.block.scales_h >> (2 * ib16)) & 0x3;
+
+    const float dl = float(d) * float(int(sl | (sh << 4)) - 32);
+    const float ph = float(((uint(bl.block.extra) >> ib16) & 1) * IQ5K_PHASE);
+
+    const uint qsw  = (bl32.block.qs[8 * (g >> 1) + tw] >> (4 * (g & 1))) & 0x0F0F0F0Fu;
+    const uint qhw  = (bl32.block.qh[tw] >> g) & 0x01010101u;
+    const u8vec4 qv = unpack8(qsw | (qhw << 4));
+    const vec4 ret = (vec4(
+        float(kvalues_iq5k[qv.x]),
+        float(kvalues_iq5k[qv.y]),
+        float(kvalues_iq5k[qv.z]),
+        float(kvalues_iq5k[qv.w])) + ph) * dl;
+    return f16vec4(ret);
+}
+#endif
+
+#if defined(DATA_A_IQ6_K)
+layout(buffer_reference, std430, buffer_reference_align = 2) buffer decodeBufIQ6_K {
+   block_iq6_k block;
+};
+
+layout(buffer_reference, std430, buffer_reference_align = 4) buffer decodeBufIQ6_K_packed32 {
+   block_iq6_k_packed32 block;
+};
+
+float16_t dequantFuncIQ6_K(const in decodeBufIQ6_K bl, const in uint blockCoords[2], const in uint coordInBlock[2])
+{
+    const float16_t d = bl.block.d;
+    const uint idx = coordInBlock[1];
+
+    const uint ib16 = idx >> 4;
+    const uint g    = ib16 >> 1;
+    const uint t    = idx & 31;
+
+    const uint qs = (bl.block.qs[32 * (g >> 1) + t] >> (4 * (g & 1))) & 0xF;
+    const uint qh = (bl.block.qh[32 * (g >> 2) + t] >> (2 * (g & 3))) & 3;
+    const uint q  = qs | (qh << 4);
+
+    const float ph = float(((uint(bl.block.extra) >> ib16) & 1) * IQ6K_PHASE);
+
+    // scales are signed, one per 16-element group, with no bias
+    float16_t ret = d * float16_t(int(bl.block.scales[ib16])) * float16_t(float(kvalues_iq6k[q]) + ph);
+    return ret;
+}
+
+f16vec4 dequantFuncIQ6_K_v(const in decodeBufIQ6_K bl, const in uint blockCoords[2], const in uint coordInBlock[2])
+{
+    decodeBufIQ6_K_packed32 bl32 = decodeBufIQ6_K_packed32(bl);
+    const float16_t d = bl.block.d;
+    const uint idx = coordInBlock[1];
+
+    const uint ib16 = idx >> 4;
+    const uint g    = ib16 >> 1;
+    const uint tw   = (idx & 31) >> 2;
+
+    const float dl = float(d) * float(int(bl.block.scales[ib16]));
+    const float ph = float(((uint(bl.block.extra) >> ib16) & 1) * IQ6K_PHASE);
+
+    const uint qsw  = (bl32.block.qs[8 * (g >> 1) + tw] >> (4 * (g & 1))) & 0x0F0F0F0Fu;
+    const uint qhw  = (bl32.block.qh[8 * (g >> 2) + tw] >> (2 * (g & 3))) & 0x03030303u;
+    const u8vec4 qv = unpack8(qsw | (qhw << 4));
+    const vec4 ret = (vec4(
+        float(kvalues_iq6k[qv.x]),
+        float(kvalues_iq6k[qv.y]),
+        float(kvalues_iq6k[qv.z]),
+        float(kvalues_iq6k[qv.w])) + ph) * dl;
+    return f16vec4(ret);
+}
+#endif
+
 #if defined(DATA_A_MXFP4)
 layout(buffer_reference, std430, buffer_reference_align = 2) buffer decodeBufMXFP4 {
    block_mxfp4 block;
@@ -1540,6 +1652,12 @@ f16vec4 dequantFuncNVFP4_v(const in decodeBufNVFP4 bl, const in uint blockCoords
 #elif defined(DATA_A_IQ4_K)
 #define dequantFuncA dequantFuncIQ4_K
 #define dequantFuncA_v dequantFuncIQ4_K_v
+#elif defined(DATA_A_IQ5_K)
+#define dequantFuncA dequantFuncIQ5_K
+#define dequantFuncA_v dequantFuncIQ5_K_v
+#elif defined(DATA_A_IQ6_K)
+#define dequantFuncA dequantFuncIQ6_K
+#define dequantFuncA_v dequantFuncIQ6_K_v
 #elif defined(DATA_A_MXFP4)
 #define dequantFuncA dequantFuncMXFP4
 #define dequantFuncA_v dequantFuncMXFP4_v
