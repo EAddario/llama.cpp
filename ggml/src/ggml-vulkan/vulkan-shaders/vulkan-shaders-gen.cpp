@@ -243,16 +243,16 @@ bool is_legacy_quant(const std::string& type_name) {
     return type_name == "q2_0" || type_name == "q4_0" || type_name == "q4_1" || type_name == "q5_0" || type_name == "q5_1" || type_name == "q8_0";
 }
 
-bool is_k_quant(const std::string& type_name) {
-    return string_ends_with(type_name, "_k");
-}
-
 bool is_iq_quant(const std::string& type_name) {
     return string_starts_with(type_name, "iq");
 }
 
+bool is_k_quant(const std::string& type_name) {
+    return string_ends_with(type_name, "_k") && !is_iq_quant(type_name);
+}
+
 bool is_iqk_quant(const std::string& type_name) {
-    return type_name == "iq2_k" || type_name == "iq3_k" || type_name == "iq4_k" ||
+    return type_name == "iq2_k" || type_name == "iq3_k" ||
            type_name == "iq5_k" || type_name == "iq6_k";
 }
 

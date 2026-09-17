@@ -1871,10 +1871,20 @@ struct block_iq4_k
     uint8_t   qs[QUANT_K_IQ4_K/2];
 };
 
+struct block_iq4_k_packed32
+{
+    float16_t d;
+    uint16_t  extra;
+    uint32_t  scales_h;
+    uint32_t  scales_l[QUANT_K_IQ4_K/128];
+    uint32_t  qs[QUANT_K_IQ4_K/8];
+};
+
 #if defined(DATA_A_IQ4_K)
 #define QUANT_K QUANT_K_IQ4_K
 #define QUANT_R QUANT_R_IQ4_K
 #define A_TYPE block_iq4_k
+#define A_TYPE_PACKED32 block_iq4_k_packed32
 #endif
 
 #define QUANT_K_IQ5_K 256

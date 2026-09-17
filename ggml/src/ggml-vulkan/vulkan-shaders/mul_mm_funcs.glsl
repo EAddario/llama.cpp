@@ -277,6 +277,26 @@ void load_a_to_shmem(const uint pos_a, const uint row, const uint col, const uin
 
     store_a(col, k_pair, FLOAT_TYPEV2(v.xy));
     store_a(col, k_pair + 1, FLOAT_TYPEV2(v.zw));
+#elif defined(DATA_A_IQ4_K)
+    const uint idx = pos_a + col * p.stride_a / LOAD_VEC_A + row;
+    const uint k_pair = row * LOAD_VEC_A / 2;
+
+    const uint ib = idx / 64;
+    const uint ib16 = (idx % 64) / 4;
+    const uint iq = 4 * (ib16 / 2) + (idx % 4);
+
+    const uint sl = (data_a[ib].scales_l[ib16 / 2] >> (4 * (ib16 & 1))) & 0xF;
+    const uint sh = (data_a[ib].scales_h[ib16 / 4] >> (2 * (ib16 % 4))) & 3;
+    const uint qshift = idx & 4;
+    u8vec4 qs = unpack8((uint(data_a_packed32[ib].qs[iq]) >> qshift) & 0x0F0F0F0F);
+
+    // sub-block phase shifts the codebook by a constant before scaling
+    const float ph = float(((uint(data_a[ib].extra) >> ib16) & 1) * IQ4K_PHASE);
+    const float d = float(data_a[ib].d) * float(int(sl | (sh << 4)) - 32);
+    const vec4 v = d * (vec4(kvalues_iq4nl[qs.x], kvalues_iq4nl[qs.y], kvalues_iq4nl[qs.z], kvalues_iq4nl[qs.w]) + ph);
+
+    store_a(col, k_pair, FLOAT_TYPEV2(v.xy));
+    store_a(col, k_pair + 1, FLOAT_TYPEV2(v.zw));
 #elif defined(DATA_A_IQ4_NL)
     const uint idx = pos_a + col * p.stride_a / LOAD_VEC_A + row;
     const uint k_pair = row * LOAD_VEC_A / 4;
