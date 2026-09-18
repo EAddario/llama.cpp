@@ -337,18 +337,23 @@ static ggml_type fallback_type_for(const ggml_type target_type) {
         case GGML_TYPE_IQ1_M:
         case GGML_TYPE_IQ2_XXS:
         case GGML_TYPE_IQ2_XS:
-        case GGML_TYPE_IQ2_S:   return GGML_TYPE_IQ2_NL;
+        case GGML_TYPE_IQ2_S:
+        case GGML_TYPE_IQ2_K:   return GGML_TYPE_IQ2_NL;
         case GGML_TYPE_IQ3_XXS:
-        case GGML_TYPE_IQ3_S:   return GGML_TYPE_IQ3_NL;
-        case GGML_TYPE_IQ4_XS:  return GGML_TYPE_IQ4_NL;
+        case GGML_TYPE_IQ3_S:
+        case GGML_TYPE_IQ3_K:   return GGML_TYPE_IQ3_NL;
+        case GGML_TYPE_IQ4_XS:
+        case GGML_TYPE_IQ4_K:   return GGML_TYPE_IQ4_NL;
         case GGML_TYPE_Q2_0:
         case GGML_TYPE_Q2_K:
         case GGML_TYPE_Q3_K:
         case GGML_TYPE_TQ1_0:
         case GGML_TYPE_TQ2_0:   return GGML_TYPE_Q4_0;
         case GGML_TYPE_Q4_K:    return GGML_TYPE_Q5_0;
-        case GGML_TYPE_Q5_K:    return GGML_TYPE_Q5_1;
-        case GGML_TYPE_Q6_K:    return GGML_TYPE_Q8_0;
+        case GGML_TYPE_Q5_K:
+        case GGML_TYPE_IQ5_K:   return GGML_TYPE_Q5_1;
+        case GGML_TYPE_Q6_K:
+        case GGML_TYPE_IQ6_K:   return GGML_TYPE_Q8_0;
         default:
             if (ggml_blck_size(target_type) <= 32) { return GGML_TYPE_COUNT; } // nothing smaller to demote to
             throw std::runtime_error(format("no tensor type fallback is defined for type %s", ggml_type_name(target_type)));
@@ -790,17 +795,22 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
 
     // Quantization types
     constexpr ggml_type quant_types[] = {
-        GGML_TYPE_IQ1_S,
         GGML_TYPE_IQ1_M,
-        GGML_TYPE_IQ2_XXS,
-        GGML_TYPE_IQ2_XS,
-        GGML_TYPE_IQ2_S,
+        GGML_TYPE_IQ1_S,
+        GGML_TYPE_IQ2_K,
         GGML_TYPE_IQ2_NL,
-        GGML_TYPE_IQ3_XXS,
-        GGML_TYPE_IQ3_S,
+        GGML_TYPE_IQ2_S,
+        GGML_TYPE_IQ2_XS,
+        GGML_TYPE_IQ2_XXS,
+        GGML_TYPE_IQ3_K,
         GGML_TYPE_IQ3_NL,
-        GGML_TYPE_IQ4_XS,
+        GGML_TYPE_IQ3_S,
+        GGML_TYPE_IQ3_XXS,
+        GGML_TYPE_IQ4_K,
         GGML_TYPE_IQ4_NL,
+        GGML_TYPE_IQ4_XS,
+        GGML_TYPE_IQ5_K,
+        GGML_TYPE_IQ6_K,
         GGML_TYPE_Q2_K,
         GGML_TYPE_Q3_K,
         GGML_TYPE_Q4_0,
@@ -852,17 +862,22 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
     // Check if tensor is an IQ type
     auto is_iq = [](const enum ggml_type gt) {
         switch (gt) {
-            case GGML_TYPE_IQ1_S:
             case GGML_TYPE_IQ1_M:
-            case GGML_TYPE_IQ2_XXS:
-            case GGML_TYPE_IQ2_XS:
-            case GGML_TYPE_IQ2_S:
+            case GGML_TYPE_IQ1_S:
+            case GGML_TYPE_IQ2_K:
             case GGML_TYPE_IQ2_NL:
-            case GGML_TYPE_IQ3_XXS:
-            case GGML_TYPE_IQ3_S:
+            case GGML_TYPE_IQ2_S:
+            case GGML_TYPE_IQ2_XS:
+            case GGML_TYPE_IQ2_XXS:
+            case GGML_TYPE_IQ3_K:
             case GGML_TYPE_IQ3_NL:
+            case GGML_TYPE_IQ3_S:
+            case GGML_TYPE_IQ3_XXS:
+            case GGML_TYPE_IQ4_K:
             case GGML_TYPE_IQ4_NL:
             case GGML_TYPE_IQ4_XS:
+            case GGML_TYPE_IQ5_K:
+            case GGML_TYPE_IQ6_K:
                 return true;
             default:
                 return false;
@@ -2776,6 +2791,8 @@ static bool tensor_requires_imatrix(const char * tensor_name, const ggml_type ds
         case GGML_TYPE_IQ2_NL:
         case GGML_TYPE_IQ1_M:
         case GGML_TYPE_IQ1_S:
+        case GGML_TYPE_IQ2_K:
+        case GGML_TYPE_IQ3_K:
             return true;
         case GGML_TYPE_Q2_K:
             // as a general rule, the k-type quantizations don't require imatrix data.
@@ -2831,6 +2848,11 @@ ggml_type llama_ftype_get_default_type(const llama_ftype ftype) {
         case LLAMA_FTYPE_MOSTLY_IQ4_XS:  return GGML_TYPE_IQ4_XS;
         case LLAMA_FTYPE_MOSTLY_IQ3_S:
         case LLAMA_FTYPE_MOSTLY_IQ3_M:   return GGML_TYPE_IQ3_S;
+        case LLAMA_FTYPE_MOSTLY_IQ2_K:   return GGML_TYPE_IQ2_K;
+        case LLAMA_FTYPE_MOSTLY_IQ3_K:   return GGML_TYPE_IQ3_K;
+        case LLAMA_FTYPE_MOSTLY_IQ4_K:   return GGML_TYPE_IQ4_K;
+        case LLAMA_FTYPE_MOSTLY_IQ5_K:   return GGML_TYPE_IQ5_K;
+        case LLAMA_FTYPE_MOSTLY_IQ6_K:   return GGML_TYPE_IQ6_K;
 
         default: return GGML_TYPE_COUNT;
     }

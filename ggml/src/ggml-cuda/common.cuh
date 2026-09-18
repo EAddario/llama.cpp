@@ -1180,6 +1180,46 @@ struct ggml_cuda_type_traits<GGML_TYPE_IQ3_S> {
     static constexpr int bs = sizeof(block_iq3_s);
 };
 
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_IQ2_K> {
+    static constexpr int qk = QK_K;
+    static constexpr int qr = QR_IQ2_K;
+    static constexpr int qi = QI_IQ2_K;
+    static constexpr int bs = sizeof(block_iq2_k);
+};
+
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_IQ3_K> {
+    static constexpr int qk = QK_K;
+    static constexpr int qr = QR_IQ3_K;
+    static constexpr int qi = QI_IQ3_K;
+    static constexpr int bs = sizeof(block_iq3_k);
+};
+
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_IQ4_K> {
+    static constexpr int qk = QK_K;
+    static constexpr int qr = QR_IQ4_K;
+    static constexpr int qi = QI_IQ4_K;
+    static constexpr int bs = sizeof(block_iq4_k);
+};
+
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_IQ5_K> {
+    static constexpr int qk = QK_K;
+    static constexpr int qr = QR_IQ5_K;
+    static constexpr int qi = QI_IQ5_K;
+    static constexpr int bs = sizeof(block_iq5_k);
+};
+
+template<>
+struct ggml_cuda_type_traits<GGML_TYPE_IQ6_K> {
+    static constexpr int qk = QK_K;
+    static constexpr int qr = QR_IQ6_K;
+    static constexpr int qi = QI_IQ6_K;
+    static constexpr int bs = sizeof(block_iq6_k);
+};
+
 static __device__ __forceinline__ int iq2_nl_value(const uint8_t * qs, int j, int g) {
     return kvalues_iq2nl[(qs[j] >> (2*g)) & 3];
 }

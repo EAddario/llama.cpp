@@ -1883,6 +1883,148 @@ struct block_iq4_nl_packed16
 #define A_TYPE_PACKED16 block_iq4_nl_packed16
 #endif
 
+#define QUANT_K_IQ2_K 256
+#define QUANT_R_IQ2_K 1
+
+struct block_iq2_k
+{
+    float16_t d;
+    uint16_t  extra;
+    uint8_t   scales[QUANT_K_IQ2_K/32];
+    uint8_t   qs[QUANT_K_IQ2_K/4];
+};
+
+struct block_iq2_k_packed32
+{
+    float16_t d;
+    uint16_t  extra;
+    uint32_t  scales[QUANT_K_IQ2_K/128];
+    uint32_t  qs[QUANT_K_IQ2_K/16];
+};
+
+#if defined(DATA_A_IQ2_K)
+#define QUANT_K QUANT_K_IQ2_K
+#define QUANT_R QUANT_R_IQ2_K
+#define A_TYPE block_iq2_k
+#define A_TYPE_PACKED32 block_iq2_k_packed32
+#endif
+
+#define QUANT_K_IQ3_K 256
+#define QUANT_R_IQ3_K 1
+
+struct block_iq3_k
+{
+    float16_t d;
+    uint16_t  extra;
+    uint16_t  scales_h;
+    uint8_t   scales_l[QUANT_K_IQ3_K/32];
+    uint8_t   qs[QUANT_K_IQ3_K/4];
+    uint8_t   qh[QUANT_K_IQ3_K/8];
+};
+
+struct block_iq3_k_packed16
+{
+    float16_t d;
+    uint16_t  extra;
+    uint16_t  scales_h;
+    uint16_t  scales_l[QUANT_K_IQ3_K/64];
+    uint16_t  qs[QUANT_K_IQ3_K/8];
+    uint16_t  qh[QUANT_K_IQ3_K/16];
+};
+
+#if defined(DATA_A_IQ3_K)
+#define QUANT_K QUANT_K_IQ3_K
+#define QUANT_R QUANT_R_IQ3_K
+#define A_TYPE block_iq3_k
+#define A_TYPE_PACKED16 block_iq3_k_packed16
+#endif
+
+#define QUANT_K_IQ4_K 256
+#define QUANT_R_IQ4_K 1
+
+struct block_iq4_k
+{
+    float16_t d;
+    uint16_t  extra;
+    uint8_t   scales_h[QUANT_K_IQ4_K/64];
+    uint8_t   scales_l[QUANT_K_IQ4_K/32];
+    uint8_t   qs[QUANT_K_IQ4_K/2];
+};
+
+struct block_iq4_k_packed32
+{
+    float16_t d;
+    uint16_t  extra;
+    uint32_t  scales_h;
+    uint32_t  scales_l[QUANT_K_IQ4_K/128];
+    uint32_t  qs[QUANT_K_IQ4_K/8];
+};
+
+#if defined(DATA_A_IQ4_K)
+#define QUANT_K QUANT_K_IQ4_K
+#define QUANT_R QUANT_R_IQ4_K
+#define A_TYPE block_iq4_k
+#define A_TYPE_PACKED32 block_iq4_k_packed32
+#endif
+
+#define QUANT_K_IQ5_K 256
+#define QUANT_R_IQ5_K 1
+
+struct block_iq5_k
+{
+    float16_t d;
+    uint16_t  extra;
+    uint8_t   scales_h[QUANT_K_IQ5_K/64];
+    uint8_t   scales_l[QUANT_K_IQ5_K/32];
+    uint8_t   qs[QUANT_K_IQ5_K/2];
+    uint8_t   qh[QUANT_K_IQ5_K/8];
+};
+
+struct block_iq5_k_packed32
+{
+    float16_t d;
+    uint16_t  extra;
+    uint32_t  scales_h;
+    uint32_t  scales_l[QUANT_K_IQ5_K/128];
+    uint32_t  qs[QUANT_K_IQ5_K/8];
+    uint32_t  qh[QUANT_K_IQ5_K/32];
+};
+
+#if defined(DATA_A_IQ5_K)
+#define QUANT_K QUANT_K_IQ5_K
+#define QUANT_R QUANT_R_IQ5_K
+#define A_TYPE block_iq5_k
+#define A_TYPE_PACKED32 block_iq5_k_packed32
+#endif
+
+#define QUANT_K_IQ6_K 256
+#define QUANT_R_IQ6_K 1
+
+struct block_iq6_k
+{
+    float16_t d;
+    uint16_t  extra;
+    int8_t    scales[QUANT_K_IQ6_K/16];
+    uint8_t   qs[QUANT_K_IQ6_K/2];
+    uint8_t   qh[QUANT_K_IQ6_K/4];
+};
+
+struct block_iq6_k_packed32
+{
+    float16_t d;
+    uint16_t  extra;
+    uint32_t  scales[QUANT_K_IQ6_K/64];
+    uint32_t  qs[QUANT_K_IQ6_K/8];
+    uint32_t  qh[QUANT_K_IQ6_K/16];
+};
+
+#if defined(DATA_A_IQ6_K)
+#define QUANT_K QUANT_K_IQ6_K
+#define QUANT_R QUANT_R_IQ6_K
+#define A_TYPE block_iq6_k
+#define A_TYPE_PACKED32 block_iq6_k_packed32
+#endif
+
 #define QUANT_K_MXFP4 32
 #define QUANT_R_MXFP4 2
 
@@ -1965,7 +2107,7 @@ void init_iq_shmem(uvec3 wgsize)
 }
 #endif
 
-#if defined(DATA_A_IQ4_NL) || defined(DATA_A_IQ4_XS)
+#if defined(DATA_A_IQ4_NL) || defined(DATA_A_IQ4_XS) || defined(DATA_A_IQ4_K)
 const int8_t kvalues_iq4nl_const[16] = {
     int8_t(-127), int8_t(-104), int8_t(-83), int8_t(-65), int8_t(-49), int8_t(-35), int8_t(-22), int8_t(-10),
     int8_t(1), int8_t(13), int8_t(25), int8_t(38), int8_t(53), int8_t(69), int8_t(89), int8_t(113)
@@ -1973,7 +2115,7 @@ const int8_t kvalues_iq4nl_const[16] = {
 
 shared FLOAT_TYPE kvalues_iq4nl[16];
 
-#if defined(DATA_A_IQ4_NL) || defined(DATA_A_IQ4_XS)
+#if defined(DATA_A_IQ4_NL) || defined(DATA_A_IQ4_XS) || defined(DATA_A_IQ4_K)
 #define NEEDS_INIT_IQ_SHMEM
 void init_iq_shmem(uvec3 wgsize)
 {
@@ -1983,6 +2125,90 @@ void init_iq_shmem(uvec3 wgsize)
     barrier();
 }
 #endif
+#endif
+
+#define IQ2K_PHASE 5
+#define IQ3K_PHASE 4
+#define IQ4K_PHASE 4
+#define IQ5K_PHASE 2
+#define IQ6K_PHASE 1
+
+#if defined(DATA_A_IQ2_K)
+const int8_t kvalues_iq2k_const[4] = {
+    int8_t(-31), int8_t(-13), int8_t(1), int8_t(17)
+};
+
+shared FLOAT_TYPE kvalues_iq2k[4];
+
+#define NEEDS_INIT_IQ_SHMEM
+void init_iq_shmem(uvec3 wgsize)
+{
+    for (uint i = gl_LocalInvocationIndex.x; i < kvalues_iq2k.length(); i += wgsize.x) {
+        kvalues_iq2k[i] = FLOAT_TYPE(kvalues_iq2k_const[i]);
+    }
+    barrier();
+}
+#endif
+
+#if defined(DATA_A_IQ3_K)
+const int8_t kvalues_iq3k_const[8] = {
+    int8_t(-63), int8_t(-40), int8_t(-23), int8_t(-10), int8_t(1), int8_t(13), int8_t(28), int8_t(47)
+};
+
+shared FLOAT_TYPE kvalues_iq3k[8];
+
+#define NEEDS_INIT_IQ_SHMEM
+void init_iq_shmem(uvec3 wgsize)
+{
+    for (uint i = gl_LocalInvocationIndex.x; i < kvalues_iq3k.length(); i += wgsize.x) {
+        kvalues_iq3k[i] = FLOAT_TYPE(kvalues_iq3k_const[i]);
+    }
+    barrier();
+}
+#endif
+
+#if defined(DATA_A_IQ5_K)
+const int8_t kvalues_iq5k_const[32] = {
+    int8_t(-126), int8_t(-114), int8_t(-103), int8_t( -92), int8_t( -83), int8_t( -74), int8_t( -65), int8_t( -57),
+    int8_t( -50), int8_t( -43), int8_t( -36), int8_t( -30), int8_t( -24), int8_t( -18), int8_t( -12), int8_t(  -6),
+    int8_t(  -1), int8_t(   5), int8_t(  11), int8_t(  17), int8_t(  23), int8_t(  29), int8_t(  36), int8_t(  43),
+    int8_t(  51), int8_t(  59), int8_t(  68), int8_t(  77), int8_t(  87), int8_t(  97), int8_t( 109), int8_t( 121)
+};
+
+shared FLOAT_TYPE kvalues_iq5k[32];
+
+#define NEEDS_INIT_IQ_SHMEM
+void init_iq_shmem(uvec3 wgsize)
+{
+    for (uint i = gl_LocalInvocationIndex.x; i < kvalues_iq5k.length(); i += wgsize.x) {
+        kvalues_iq5k[i] = FLOAT_TYPE(kvalues_iq5k_const[i]);
+    }
+    barrier();
+}
+#endif
+
+#if defined(DATA_A_IQ6_K)
+const int8_t kvalues_iq6k_const[64] = {
+    int8_t(-127), int8_t(-121), int8_t(-115), int8_t(-109), int8_t(-104), int8_t( -98), int8_t( -93), int8_t( -88),
+    int8_t( -84), int8_t( -79), int8_t( -74), int8_t( -70), int8_t( -66), int8_t( -62), int8_t( -58), int8_t( -54),
+    int8_t( -51), int8_t( -47), int8_t( -44), int8_t( -40), int8_t( -37), int8_t( -34), int8_t( -31), int8_t( -28),
+    int8_t( -25), int8_t( -22), int8_t( -19), int8_t( -16), int8_t( -13), int8_t( -11), int8_t(  -8), int8_t(  -5),
+    int8_t(  -2), int8_t(   0), int8_t(   3), int8_t(   6), int8_t(   9), int8_t(  12), int8_t(  14), int8_t(  17),
+    int8_t(  20), int8_t(  23), int8_t(  27), int8_t(  30), int8_t(  33), int8_t(  36), int8_t(  40), int8_t(  44),
+    int8_t(  47), int8_t(  51), int8_t(  55), int8_t(  59), int8_t(  63), int8_t(  68), int8_t(  72), int8_t(  77),
+    int8_t(  82), int8_t(  87), int8_t(  92), int8_t(  98), int8_t( 103), int8_t( 109), int8_t( 115), int8_t( 121)
+};
+
+shared FLOAT_TYPE kvalues_iq6k[64];
+
+#define NEEDS_INIT_IQ_SHMEM
+void init_iq_shmem(uvec3 wgsize)
+{
+    for (uint i = gl_LocalInvocationIndex.x; i < kvalues_iq6k.length(); i += wgsize.x) {
+        kvalues_iq6k[i] = FLOAT_TYPE(kvalues_iq6k_const[i]);
+    }
+    barrier();
+}
 #endif
 
 #if defined(DATA_A_MXFP4) || defined(DATA_A_NVFP4)
