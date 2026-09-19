@@ -5460,6 +5460,8 @@ static void quantize_row_iq2_k_impl(const float * GGML_RESTRICT x, const float *
     for (int i = 0; i < 4; ++i) {
         cbi[0][i] = kvalues_iq2k[i];
         cbi[1][i] = kvalues_iq2k[i] + IQ2K_PHASE;
+    }
+    for (int i = 0; i < 4; ++i) {
         cb[0][i] = cbi[0][i];
         cb[1][i] = cbi[1][i];
         cb[2][i] = cbi[0][3 - i];
