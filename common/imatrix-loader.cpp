@@ -113,10 +113,10 @@ bool common_imatrix_load(const std::string & fname, common_imatrix & imatrix) {
         }
     }
 
-    imatrix.has_metadata = datasets_key != -1 && chunk_count_key != -1 && chunk_size_key != -1;
-    imatrix.chunk_count  = chunk_count_key != -1 ? gguf_get_val_u32(ctx_gguf, chunk_count_key) : 0;
-    imatrix.chunk_size   = chunk_size_key != -1 ? gguf_get_val_u32(ctx_gguf, chunk_size_key)  : 0;
-    imatrix.n_layer_nextn = nextn_key != -1 ? gguf_get_val_u32(ctx_gguf, nextn_key) : 0;
+    imatrix.has_metadata  = datasets_key != -1 && chunk_count_key != -1 && chunk_size_key != -1;
+    imatrix.chunk_count   = chunk_count_key != -1 ? gguf_get_val_u32(ctx_gguf, chunk_count_key) : 0;
+    imatrix.chunk_size    = chunk_size_key  != -1 ? gguf_get_val_u32(ctx_gguf, chunk_size_key) : 0;
+    imatrix.n_layer_nextn = nextn_key       != -1 ? gguf_get_val_u32(ctx_gguf, nextn_key) : 0;
 
     // stats schema: maps file-order positions to canonical metric indices
     const int64_t schema_idx = gguf_find_key(ctx_gguf, LLM_KV_IMATRIX_STATS_SCHEMA);
