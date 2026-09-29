@@ -4082,7 +4082,7 @@ void ggml_vec_dot_iq4_k_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
 
 #if defined __AVX2__
 
-    const __m256i values = iqk_values_tbl(kvalues_iq4nl, 16);
+    const __m256i values = iqk_values_tbl(kvalues_iq4k, 16);
     const __m256i m4 = _mm256_set1_epi8(0x0f);
 
     __m256 accum = _mm256_setzero_ps();
