@@ -4340,7 +4340,7 @@ void ggml_vec_dot_iq4_k_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
     const int nb = n / QK_K;
 
 #ifdef __ARM_NEON
-    const int8x16_t  values = vld1q_s8(kvalues_iq4nl);
+    const int8x16_t  values = vld1q_s8(kvalues_iq4k);
     const uint8x16_t m4b = vdupq_n_u8(0x0f);
 
     float sumf = 0;
