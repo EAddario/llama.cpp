@@ -528,7 +528,7 @@ static __device__ __forceinline__ void dequantize_iq4_k(const void * vx, const i
     dst_t * y = yy + 16*ib + j0;
     for (int j = 0; j < 8; ++j) {
         const int q = (qs[j] >> 4*(ib%2)) & 0xf;
-        y[j] = ggml_cuda_cast<dst_t>(dl * (kvalues_iq4nl[q] + ph));
+        y[j] = ggml_cuda_cast<dst_t>(dl * (kvalues_iq4k[q] + ph));
     }
 }
 

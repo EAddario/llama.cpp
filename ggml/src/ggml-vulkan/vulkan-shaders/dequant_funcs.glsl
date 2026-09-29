@@ -851,7 +851,7 @@ vec2 dequantize(uint ib, uint iqs, uint a_offset) {
     const uint q0 = (data_a[a_offset + ib].qs[qi    ] >> qsh) & 0xF;
     const uint q1 = (data_a[a_offset + ib].qs[qi + 1] >> qsh) & 0xF;
 
-    return float(ls) * vec2(float(kvalues_iq4nl[q0]) + ph, float(kvalues_iq4nl[q1]) + ph);
+    return float(ls) * vec2(float(kvalues_iq4k[q0]) + ph, float(kvalues_iq4k[q1]) + ph);
 }
 vec2 get_dm(uint ib, uint a_offset) {
     return vec2(float(data_a[a_offset + ib].d), 0);

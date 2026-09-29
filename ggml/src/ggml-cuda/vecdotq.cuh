@@ -1539,7 +1539,7 @@ static __device__ __forceinline__ float vec_dot_iq4_k_q8_1(
             const int q = (get_int_b4(bq4->qs, 4*g + j) >> 4*l) & 0x0F0F0F0F;
             const int u = get_int_b4(bq8_1[g].qs, 4*l + j);
 
-            sumq = ggml_cuda_dp4a(get_int_from_table_u8(q, kvalues_iq4nl), u, sumq);
+            sumq = ggml_cuda_dp4a(get_int_from_table_u8(q, kvalues_iq4k), u, sumq);
             sumy = ggml_cuda_dp4a(0x01010101, u, sumy);
         }
         sumi += ls*(sumq + ph*sumy);

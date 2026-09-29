@@ -33,6 +33,6 @@ void main() {
 
     [[unroll]] for (uint l = 0; l < 16; ++l) {
         const uint q = (data_a[ib].qs[q_idx + l] >> qsh) & 0xF;
-        data_b[b_idx + l] = D_TYPE(dl * (float(kvalues_iq4nl[q]) + ph));
+        data_b[b_idx + l] = D_TYPE(dl * (float(kvalues_iq4k[q]) + ph));
     }
 }

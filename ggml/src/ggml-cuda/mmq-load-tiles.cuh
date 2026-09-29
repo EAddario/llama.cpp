@@ -2070,7 +2070,7 @@ template <ggml_type type, int J, bool fallback> static __device__ __forceinline_
 #pragma unroll
         for (int j = 0; j < 4; ++j) {
             const int q = (get_int_b4(bxi->qs, 4*g + j) >> 4*l) & 0x0F0F0F0F;
-            const int v = get_int_from_table_u8_ph(q, kvalues_iq4nl, ph);
+            const int v = get_int_from_table_u8_ph(q, kvalues_iq4k, ph);
 
 #if defined(AMD_MFMA_AVAILABLE) || defined(TURING_MMA_AVAILABLE) || defined(AMD_WMMA_AVAILABLE)
             x_qs[i*sram_stride           + 4*ib + j] = v;

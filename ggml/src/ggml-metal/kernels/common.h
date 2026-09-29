@@ -54,30 +54,34 @@ constexpr constant static float kvalues_mxfp4_f[16] = {
 };
 
 constexpr constant static float kvalues_iq2k_f[4] = {
-    -31.f, -13.f, 1.f, 17.f
+    -17.f, -4.f, 7.f, 23.f
 };
 
 constexpr constant static float kvalues_iq3k_f[8] = {
-    -63.f, -40.f, -23.f, -10.f, 1.f, 13.f, 28.f, 47.f
+    -55.f, -37.f, -23.f, -12.f, -1.f, 10.f, 23.f, 40.f
+};
+
+constexpr constant static float kvalues_iq4k_f[16] = {
+    -127.f, -96.f, -77.f, -61.f, -47.f, -35.f, -23.f, -12.f, 0.f, 11.f, 23.f, 36.f, 50.f, 66.f, 85.f, 103.f
 };
 
 constexpr constant static float kvalues_iq5k_f[32] = {
-    -126.f, -114.f, -103.f,  -92.f,  -83.f,  -74.f,  -65.f,  -57.f,  -50.f,  -43.f,  -36.f,  -30.f,  -24.f,  -18.f,  -12.f,   -6.f,
-      -1.f,    5.f,   11.f,   17.f,   23.f,   29.f,   36.f,   43.f,   51.f,   59.f,   68.f,   77.f,   87.f,   97.f,  109.f,  121.f
+    -115.f, -105.f,  -94.f,  -83.f,  -74.f,  -66.f,  -59.f,  -52.f,  -45.f,  -39.f,  -33.f,  -27.f,  -22.f,  -16.f,  -11.f,   -6.f,
+      -1.f,    5.f,   10.f,   15.f,   21.f,   27.f,   33.f,   39.f,   46.f,   54.f,   61.f,   69.f,   78.f,   86.f,  103.f,  111.f
 };
 
 constexpr constant static float kvalues_iq6k_f[64] = {
-    -127.f, -121.f, -115.f, -109.f, -104.f,  -98.f,  -93.f,  -88.f,  -84.f,  -79.f,  -74.f,  -70.f,  -66.f,  -62.f,  -58.f,  -54.f,
-     -51.f,  -47.f,  -44.f,  -40.f,  -37.f,  -34.f,  -31.f,  -28.f,  -25.f,  -22.f,  -19.f,  -16.f,  -13.f,  -11.f,   -8.f,   -5.f,
-      -2.f,    0.f,    3.f,    6.f,    9.f,   12.f,   14.f,   17.f,   20.f,   23.f,   27.f,   30.f,   33.f,   36.f,   40.f,   44.f,
-      47.f,   51.f,   55.f,   59.f,   63.f,   68.f,   72.f,   77.f,   82.f,   87.f,   92.f,   98.f,  103.f,  109.f,  115.f,  121.f
+    -121.f, -116.f, -109.f, -103.f,  -99.f,  -93.f,  -88.f,  -84.f,  -80.f,  -75.f,  -71.f,  -67.f,  -63.f,  -59.f,  -55.f,  -52.f,
+     -48.f,  -45.f,  -42.f,  -38.f,  -35.f,  -32.f,  -29.f,  -26.f,  -24.f,  -21.f,  -18.f,  -15.f,  -13.f,  -10.f,   -7.f,   -5.f,
+      -2.f,    1.f,    3.f,    6.f,    8.f,   11.f,   14.f,   17.f,   20.f,   22.f,   25.f,   28.f,   32.f,   35.f,   38.f,   42.f,
+      45.f,   49.f,   52.f,   56.f,   60.f,   65.f,   69.f,   74.f,   78.f,   83.f,   88.f,   94.f,   97.f,  105.f,  110.f,  115.f
 };
 
-constexpr constant static float IQ2K_PHASE_F = 5.f;
-constexpr constant static float IQ3K_PHASE_F = 4.f;
-constexpr constant static float IQ4K_PHASE_F = 4.f;
-constexpr constant static float IQ5K_PHASE_F = 2.f;
-constexpr constant static float IQ6K_PHASE_F = 1.f;
+constexpr constant static float IQ2K_PHASE_F = 8.f;
+constexpr constant static float IQ3K_PHASE_F = 23.f;
+constexpr constant static float IQ4K_PHASE_F = 19.f;
+constexpr constant static float IQ5K_PHASE_F = 15.f;
+constexpr constant static float IQ6K_PHASE_F = 12.f;
 
 static inline int best_index_int8(int n, constant float * val, float x) {
     const float x2 = x + x;

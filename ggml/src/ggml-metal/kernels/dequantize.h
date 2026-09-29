@@ -845,7 +845,7 @@ void dequantize_iq4_k(device const block_iq4_k * xb, short il, thread type4x4 & 
 
     const short shift = 4 * (il % 2);
     for (int i = 0; i < 16; ++i) {
-        reg[i / 4][i % 4] = dl * (kvalues_iq4nl_f[(qs[i] >> shift) & 0xf] + ph);
+        reg[i / 4][i % 4] = dl * (kvalues_iq4k_f[(qs[i] >> shift) & 0xf] + ph);
     }
 }
 
