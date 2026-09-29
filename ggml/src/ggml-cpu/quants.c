@@ -1434,8 +1434,8 @@ void ggml_vec_dot_iq4_k_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, 
             const int ph2 = x[ibl].extra & (1 << (ib + 1)) ? IQ4K_PHASE : 0;
             int sumi1 = 0, sumi2 = 0;
             for (int j = 0; j < 16; ++j) {
-                sumi1 += q8[j + 0] * (kvalues_iq4nl[qs[j] & 0xf] + ph1);
-                sumi2 += q8[j +16] * (kvalues_iq4nl[qs[j] >> 4] + ph2);
+                sumi1 += q8[j + 0] * (kvalues_iq4k[qs[j] & 0xf] + ph1);
+                sumi2 += q8[j +16] * (kvalues_iq4k[qs[j] >> 4] + ph2);
             }
 
             sum += ls1*sumi1 + ls2*sumi2;

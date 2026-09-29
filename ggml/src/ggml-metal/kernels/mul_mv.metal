@@ -3532,7 +3532,7 @@ void kernel_mul_mv_iq4_k_f32_impl(
     const short ib = it/2;
     const short il = it%2;
 
-    shmem_f32[tiisg] = kvalues_iq4nl_f[tiisg%16];
+    shmem_f32[tiisg] = kvalues_iq4k_f[tiisg%16];
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
     float4 yl[4];

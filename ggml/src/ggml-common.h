@@ -1189,32 +1189,35 @@ GGML_TABLE_BEGIN(int8_t, kvalues_iq4nl, 16)
     -127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113,
 GGML_TABLE_END()
 
-// IQ2_K..IQ6_K using ik_llama codebooks for now. IQ4_K reuses kvalues_iq4nl
 GGML_TABLE_BEGIN(int8_t, kvalues_iq2k, 4)
-    -31, -13, 1, 17,
+    -17, -4, 7, 23,
 GGML_TABLE_END()
 
 GGML_TABLE_BEGIN(int8_t, kvalues_iq3k, 8)
-    -63, -40, -23, -10, 1, 13, 28, 47,
+    -55, -37, -23, -12, -1, 10, 23, 40,
+GGML_TABLE_END()
+
+GGML_TABLE_BEGIN(int8_t, kvalues_iq4k, 16)
+    -127, -96, -77, -61, -47, -35, -23, -12, 0, 11, 23, 36, 50, 66, 85, 103,
 GGML_TABLE_END()
 
 GGML_TABLE_BEGIN(int8_t, kvalues_iq5k, 32)
-    -126, -114, -103,  -92,  -83,  -74,  -65,  -57,  -50,  -43,  -36,  -30,  -24,  -18,  -12,   -6,
-      -1,    5,   11,   17,   23,   29,   36,   43,   51,   59,   68,   77,   87,   97,  109,  121,
+    -115, -105,  -94,  -83,  -74,  -66,  -59,  -52,  -45,  -39,  -33,  -27,  -22,  -16,  -11,   -6,
+      -1,    5,   10,   15,   21,   27,   33,   39,   46,   54,   61,   69,   78,   86,  103,  111,
 GGML_TABLE_END()
 
 GGML_TABLE_BEGIN(int8_t, kvalues_iq6k, 64)
-    -127, -121, -115, -109, -104,  -98,  -93,  -88,  -84,  -79,  -74,  -70,  -66,  -62,  -58,  -54,
-     -51,  -47,  -44,  -40,  -37,  -34,  -31,  -28,  -25,  -22,  -19,  -16,  -13,  -11,   -8,   -5,
-      -2,    0,    3,    6,    9,   12,   14,   17,   20,   23,   27,   30,   33,   36,   40,   44,
-      47,   51,   55,   59,   63,   68,   72,   77,   82,   87,   92,   98,  103,  109,  115,  121,
+    -121, -116, -109, -103,  -99,  -93,  -88,  -84,  -80,  -75,  -71,  -67,  -63,  -59,  -55,  -52,
+     -48,  -45,  -42,  -38,  -35,  -32,  -29,  -26,  -24,  -21,  -18,  -15,  -13,  -10,   -7,   -5,
+      -2,    1,    3,    6,    8,   11,   14,   17,   20,   22,   25,   28,   32,   35,   38,   42,
+      45,   49,   52,   56,   60,   65,   69,   74,   78,   83,   88,   94,   97,  105,  110,  115,
 GGML_TABLE_END()
 
-#define IQ2K_PHASE 5
-#define IQ3K_PHASE 4
-#define IQ4K_PHASE 4
-#define IQ5K_PHASE 2
-#define IQ6K_PHASE 1
+#define IQ2K_PHASE 8
+#define IQ3K_PHASE 23
+#define IQ4K_PHASE 19
+#define IQ5K_PHASE 15
+#define IQ6K_PHASE 12
 
 // e2m1 values (doubled), shared by MXFP4 and NVFP4
 // ref: https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf
