@@ -345,7 +345,7 @@ void load_a_to_shmem(const uint pos_a, const uint row, const uint col, const uin
     // sub-block phase shifts the codebook by a constant before scaling
     const float ph = float(((uint(data_a[ib].extra) >> ib16) & 1) * IQ4K_PHASE);
     const float d = float(data_a[ib].d) * float(int(sl | (sh << 4)) - 32);
-    const vec4 v = d * (vec4(kvalues_iq4nl[qs.x], kvalues_iq4nl[qs.y], kvalues_iq4nl[qs.z], kvalues_iq4nl[qs.w]) + ph);
+    const vec4 v = d * (vec4(kvalues_iq4k[qs.x], kvalues_iq4k[qs.y], kvalues_iq4k[qs.z], kvalues_iq4k[qs.w]) + ph);
 
     store_a(col, k_pair, FLOAT_TYPEV2(v.xy));
     store_a(col, k_pair + 1, FLOAT_TYPEV2(v.zw));

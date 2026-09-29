@@ -1446,7 +1446,7 @@ float16_t dequantFuncIQ4_K(const in decodeBufIQ4_K bl, const in uint blockCoords
 
     const float ph = float(((uint(bl.block.extra) >> ib16) & 1) * IQ4K_PHASE);
 
-    float16_t ret = d * float16_t(int(sl | (sh << 4)) - 32) * float16_t(float(kvalues_iq4nl[q]) + ph);
+    float16_t ret = d * float16_t(int(sl | (sh << 4)) - 32) * float16_t(float(kvalues_iq4k[q]) + ph);
     return ret;
 }
 
@@ -1468,10 +1468,10 @@ f16vec4 dequantFuncIQ4_K_v(const in decodeBufIQ4_K bl, const in uint blockCoords
     const uint qsw  = bl32.block.qs[qs_w];
     const u8vec4 qv = unpack8((qsw >> qshift) & 0x0F0F0F0Fu);
     const vec4 ret = (vec4(
-        float(kvalues_iq4nl[qv.x]),
-        float(kvalues_iq4nl[qv.y]),
-        float(kvalues_iq4nl[qv.z]),
-        float(kvalues_iq4nl[qv.w])) + ph) * dl;
+        float(kvalues_iq4k[qv.x]),
+        float(kvalues_iq4k[qv.y]),
+        float(kvalues_iq4k[qv.z]),
+        float(kvalues_iq4k[qv.w])) + ph) * dl;
     return f16vec4(ret);
 }
 #endif
