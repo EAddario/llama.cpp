@@ -24,7 +24,7 @@ The parameters in square brackets are optional and have the following meaning:
 * `--save-frequency` specifies how often to save a copy of the imatrix in a separate file. Default is 0 (i.e., never)
 * `--process-output` specifies if data will be collected for `output.weight` and `token_embd.weight` (when the model ties its embeddings to the output). Typically, it is better not to utilize the importance matrix when quantizing these tensors, so it's set to `false` by default.
 * `--nextn` collects data for MTP/NextN layers if present. Needs a single sequence per batch (i.e. set `--batch-size` ≤ `--ctx-size`). Cannot be used on models where NextN layers share the trunk's KV cache.
-* `-md | --model-draft FNAME` specifies an external NextN draft file. Use only if the model does not alrady include NextN layers.
+* `-md | --model-draft FNAME` specifies an external NextN draft file. Use only if the model does not already include NextN layers.
 * `--in-file` one or more existing imatrix files to load and combine. Useful for merging files from multiple runs/datasets.
 * `--parse-special` enables parsing of special tokens (e.g., `<|im_start|>` in some models). Useful for models with custom tokenizers.
 * `--chunk | --from-chunk` to skip the first `n` chunks of tokens from the input data. Useful for resuming or skipping initial low-quality data.
@@ -44,6 +44,16 @@ Recent versions of `llama-imatrix` store data in GGUF format by default. For the
 
 # use the imatrix to perform a Q4_K_M quantization
 ./llama-quantize --imatrix imatrix.gguf ggml-model-f16.gguf ./ggml-model-q4_k_m.gguf q4_k_m
+```
+
+```bash
+# generate importance matrix including embedded NextN layers 
+./llama-imatrix -m ggml-model-f16.gguf -f calibration-data.txt --nextn -o imatrix-mtp.gguf -ngl 99
+```
+
+```bash
+# generate importance matrix including stand-alone NextN draft 
+./llama-imatrix -m ggml-model-f16.gguf -f calibration-data.txt --model-draft draft.gguf -o imatrix-mtp.gguf -ngl 99
 ```
 
 ```bash
