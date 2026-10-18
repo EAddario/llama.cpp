@@ -7,6 +7,8 @@
 typedef void (*cpy_kernel_t)(const char * cx, char * cdst);
 
 __dpct_inline__ int best_index_int8(int n, const int8_t * val, float x) {
+    // val is sorted, so x picks level i once it reaches the midpoint of val[i-1] and val[i].
+    // n must be a power of 2
     const float x2  = x + x;
     int         idx = 0;
     for (int step = n >> 1; step > 0; step >>= 1) {

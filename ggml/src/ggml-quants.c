@@ -27,7 +27,7 @@
 
 static inline int best_index_int8(int n, const int8_t * val, float x) {
     // val is sorted, so x picks level i once it reaches the midpoint of val[i-1] and val[i].
-    // Scale by 2 to keep both sides exact, then binary search with no branches. n must be a power of 2.
+    // n must be a power of 2
     const float x2 = x + x;
     int idx = 0;
     for (int step = n >> 1; step > 0; step >>= 1) {
@@ -5493,7 +5493,7 @@ static void quantize_row_iqk_impl(const float * GGML_RESTRICT x, const float * q
     }
 }
 
-static float best_scale_iq2_k(const float * GGML_RESTRICT xb, const float * GGML_RESTRICT wb, const float cb[4][4], int * phase, float * best_sumq2) {
+static float best_scale_iq2_k(const float * GGML_RESTRICT xb, const float * GGML_RESTRICT wb, float cb[4][4], int * phase, float * best_sumq2) {
     int idx[16];
     for (int j = 0; j < 16; ++j) idx[j] = j;
     for (int i = 1; i < 16; ++i) {

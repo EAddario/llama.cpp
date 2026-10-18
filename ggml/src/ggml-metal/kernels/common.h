@@ -84,6 +84,8 @@ constexpr constant static float IQ5K_PHASE_F = 15.f;
 constexpr constant static float IQ6K_PHASE_F = 13.f;
 
 static inline int best_index_int8(int n, constant float * val, float x) {
+    // val is sorted, so x picks level i once it reaches the midpoint of val[i-1] and val[i].
+    // n must be a power of 2
     const float x2 = x + x;
     int idx = 0;
     for (int step = n >> 1; step > 0; step >>= 1) {
