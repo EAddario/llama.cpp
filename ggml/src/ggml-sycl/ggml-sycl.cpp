@@ -6938,11 +6938,11 @@ static bool do_ggml_backend_sycl_device_supports_op(ggml_backend_dev_t dev, cons
 
                 if (src0_type == GGML_TYPE_TQ2_0 ||
                     src0_type == GGML_TYPE_TQ1_0 ||
-                    src0_type == GGML_TYPE_IQ2_K ||
-                    src0_type == GGML_TYPE_IQ3_K ||
-                    src0_type == GGML_TYPE_IQ4_K ||
-                    src0_type == GGML_TYPE_IQ5_K ||
-                    src0_type == GGML_TYPE_IQ6_K) {
+                    src0_type == GGML_TYPE_JQ2_K ||
+                    src0_type == GGML_TYPE_JQ3_K ||
+                    src0_type == GGML_TYPE_JQ4_K ||
+                    src0_type == GGML_TYPE_JQ5_K ||
+                    src0_type == GGML_TYPE_JQ6_K) {
                     return false;
                 }
 
@@ -7006,11 +7006,11 @@ static bool do_ggml_backend_sycl_device_supports_op(ggml_backend_dev_t dev, cons
                     op->type == GGML_TYPE_TQ1_0 ||
                     op->type == GGML_TYPE_IQ2_NL ||
                     op->type == GGML_TYPE_IQ3_NL ||
-                    op->type == GGML_TYPE_IQ2_K ||
-                    op->type == GGML_TYPE_IQ3_K ||
-                    op->type == GGML_TYPE_IQ4_K ||
-                    op->type == GGML_TYPE_IQ5_K ||
-                    op->type == GGML_TYPE_IQ6_K) {
+                    op->type == GGML_TYPE_JQ2_K ||
+                    op->type == GGML_TYPE_JQ3_K ||
+                    op->type == GGML_TYPE_JQ4_K ||
+                    op->type == GGML_TYPE_JQ5_K ||
+                    op->type == GGML_TYPE_JQ6_K) {
                     return false;
                 }
                 auto res = (op->src[0]->type == GGML_TYPE_F32 || op->src[0]->type == GGML_TYPE_F16 ||
@@ -7143,11 +7143,11 @@ static bool do_ggml_backend_sycl_device_supports_op(ggml_backend_dev_t dev, cons
                     src0_type == GGML_TYPE_TQ1_0  || src1_type == GGML_TYPE_TQ1_0  ||
                     src0_type == GGML_TYPE_IQ2_NL || src1_type == GGML_TYPE_IQ2_NL ||
                     src0_type == GGML_TYPE_IQ3_NL || src1_type == GGML_TYPE_IQ3_NL ||
-                    src0_type == GGML_TYPE_IQ2_K  || src1_type == GGML_TYPE_IQ2_K  ||
-                    src0_type == GGML_TYPE_IQ3_K  || src1_type == GGML_TYPE_IQ3_K  ||
-                    src0_type == GGML_TYPE_IQ4_K  || src1_type == GGML_TYPE_IQ4_K  ||
-                    src0_type == GGML_TYPE_IQ5_K  || src1_type == GGML_TYPE_IQ5_K  ||
-                    src0_type == GGML_TYPE_IQ6_K  || src1_type == GGML_TYPE_IQ6_K) {
+                    src0_type == GGML_TYPE_JQ2_K  || src1_type == GGML_TYPE_JQ2_K  ||
+                    src0_type == GGML_TYPE_JQ3_K  || src1_type == GGML_TYPE_JQ3_K  ||
+                    src0_type == GGML_TYPE_JQ4_K  || src1_type == GGML_TYPE_JQ4_K  ||
+                    src0_type == GGML_TYPE_JQ5_K  || src1_type == GGML_TYPE_JQ5_K  ||
+                    src0_type == GGML_TYPE_JQ6_K  || src1_type == GGML_TYPE_JQ6_K) {
                     return false;
                 }
 
