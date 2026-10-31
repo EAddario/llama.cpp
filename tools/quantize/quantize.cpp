@@ -2,10 +2,22 @@
 #include "common.h"
 #include "imatrix-loader.h"
 
+#include <atomic>
+#include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <signal.h>
 #include <unordered_map>
+
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#   define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 // changes to this struct must also be reflected in src/llama-quant.cpp
 struct tensor_type_option {
@@ -161,10 +173,10 @@ static void usage(const char * executable) {
     printf("                                      max amount of tensor rows kept in memory while quantizing one tensor (default: 8192)\n");
     printf("                                      lower it to quantize models with very large tensors on a machine with little RAM\n\n");
     printf("  --target-bpw n\n");
-    printf("                                      target a bits per weight (bpw); must be a positive number between 0.0 and 16.0\n");
+    printf("                                      target a bits per weight (bpw); must be a number between 0.0 and 16.0, 0 means the smallest possible model\n");
     printf("                                      advanced option to automatically select quantization types to achieve a total bits per weight (bpw) target\n\n");
     printf("  --target-size n\n");
-    printf("                                      target a file size; must be a positive number\n");
+    printf("                                      target a file size; must be 0 or more, 0 means the smallest possible model\n");
     printf("                                      advanced option to automatically select quantization types to achieve a total file size\n");
     printf("                                      allowed units: b, k|kib, m|mib, g|gib, t|tib; defaults to b (bytes) if none is provided\n\n");
     printf("  --state-file [filename]\n");
@@ -193,7 +205,8 @@ static int load_imatrix(const std::string & imatrix_file,
     std::vector<std::string> & imatrix_datasets,
     std::unordered_map<std::string, std::vector<float>> & values_data,
     std::unordered_map<std::string, std::vector<float>> & activations_data,
-    std::unordered_map<std::string, std::vector<float>> & statistics_data)
+    std::unordered_map<std::string, std::vector<float>> & statistics_data,
+    std::vector<std::string> & statistics_schema)
 {
     common_imatrix loaded;
     if (!common_imatrix_load(imatrix_file, loaded)) {
@@ -284,6 +297,7 @@ static int load_imatrix(const std::string & imatrix_file,
     }
 
     imatrix_datasets = std::move(loaded.datasets);
+    statistics_schema = std::move(loaded.stats_schema);
 
     if (!imatrix_datasets.empty()) {
         printf("%s: imatrix datasets=['%s'", __func__, imatrix_datasets[0].c_str());
@@ -304,10 +318,11 @@ static int prepare_imatrix(const std::string & imatrix_file,
         const std::vector<std::string> & excluded_weights,
         std::unordered_map<std::string, std::vector<float>> & values_data,
         std::unordered_map<std::string, std::vector<float>> & activations_data,
-        std::unordered_map<std::string, std::vector<float>> & statistics_data) {
+        std::unordered_map<std::string, std::vector<float>> & statistics_data,
+        std::vector<std::string> & stats_schema) {
     int m_last_call = -1;
     if (!imatrix_file.empty()) {
-        m_last_call = load_imatrix(imatrix_file, imatrix_dataset, values_data, activations_data, statistics_data);
+        m_last_call = load_imatrix(imatrix_file, imatrix_dataset, values_data, activations_data, statistics_data, stats_schema);
     }
     if (values_data.empty()) {
         return m_last_call;
@@ -467,13 +482,13 @@ static bool parse_target_bpw(const char * data, float & target_bpw) {
 
     try {
         target_bpw = std::stof(data);
-        if (target_bpw < 0.0f || target_bpw > 16.0f) {
-            printf("\n%s: target bits per weight (bpw) must be a positive number between 0.0 and 16.0\n\n", __func__);
+        if (!std::isfinite(target_bpw) || target_bpw < 0.0f || target_bpw > 16.0f) {
+            printf("\n%s: target bits per weight (bpw) must be a number between 0.0 and 16.0\n\n", __func__);
             return false;
         }
     }
     catch (const std::exception & e) {
-        printf("\n%s: '%s' is not valid. Target bits per weight (bpw) must be a positive number between 0.0 and 16.0\n\n", __func__, data);
+        printf("\n%s: '%s' is not valid. Target bits per weight (bpw) must be a number between 0.0 and 16.0\n\n", __func__, data);
         return false;
     }
 
@@ -488,7 +503,7 @@ static bool parse_target_size(const char * data, int64_t & target_size) {
 
     char * end = nullptr;
     const double val = std::strtod(data, &end);
-    if (end == data || val < 0) {
+    if (end == data || !std::isfinite(val) || val < 0) {
         printf("\n%s: invalid target file size '%s'\n\n", __func__, data);
         return false;
     }
@@ -509,6 +524,11 @@ static bool parse_target_size(const char * data, int64_t & target_size) {
         mul = 1024LL * 1024 * 1024 * 1024;
     } else {
         printf("\n%s: invalid unit '%s' in '%s'. Allowed: b, k or kib, m or mib, g or gib, t or tib\n\n", __func__, suffix.c_str(), data);
+        return false;
+    }
+
+    if (val * mul >= (double)INT64_MAX) {
+        printf("\n%s: invalid target file size '%s'\n\n", __func__, data);
         return false;
     }
 
@@ -576,6 +596,18 @@ static const char * get_ftype(const float bpw) {
 
     return quant_bpw.lower_bound(bpw)->second;
 }
+
+static std::atomic<int> interrupt_signal{ 0 };
+
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__)) || defined (_WIN32)
+// try to save the state checkpoint if interrupted while scoring
+static void signal_handler(int signo) {
+    int expected = 0;
+    interrupt_signal.compare_exchange_strong(expected, signo);
+}
+#endif
+
+static bool is_interrupted(void * /*data*/) { return interrupt_signal.load() != 0; }
 
 // satisfies -Wmissing-declarations
 int llama_quantize(int argc, char ** argv);
@@ -711,11 +743,13 @@ int llama_quantize(int argc, char ** argv) {
     std::unordered_map<std::string, std::vector<float>> values_data;
     std::unordered_map<std::string, std::vector<float>> activations_data;
     std::unordered_map<std::string, std::vector<float>> statistics_data;
-    int m_last_call = prepare_imatrix(imatrix_file, imatrix_datasets, included_weights, excluded_weights, values_data, activations_data, statistics_data);
+    std::vector<std::string> stats_schema;
+    int m_last_call = prepare_imatrix(imatrix_file, imatrix_datasets, included_weights, excluded_weights, values_data, activations_data, statistics_data, stats_schema);
 
     std::vector<llama_model_imatrix_data> vdata;
     std::vector<llama_model_imatrix_data> adata;
     std::vector<llama_model_imatrix_data> sdata;
+    std::vector<const char *> sschema;
     std::vector<llama_model_tensor_override> tto;
 
     if (!values_data.empty()) {
@@ -766,6 +800,10 @@ int llama_quantize(int argc, char ** argv) {
         for (const auto & kv : statistics_data) { sdata.push_back({kv.first.c_str(), kv.second.data(), kv.second.size()}); }
         sdata.push_back({nullptr, nullptr, 0});  // array terminator
         params.statistics = sdata.data();
+        sschema.reserve(stats_schema.size() + 1);
+        for (const auto & name : stats_schema) { sschema.push_back(name.c_str()); }
+        sschema.push_back(nullptr);  // array terminator
+        params.stats_schema = sschema.data();
     }
     if (!kv_overrides.empty()) {
         kv_overrides.emplace_back();
@@ -890,6 +928,24 @@ int llama_quantize(int argc, char ** argv) {
     }
     fprintf(stderr, "\n");
 
+    // handle SIGINT and SIGTERM
+    {
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
+        struct sigaction sigint_action;
+        sigint_action.sa_handler = signal_handler;
+        sigemptyset(&sigint_action.sa_mask);
+        sigint_action.sa_flags = SA_RESTART;
+        sigaction(SIGINT, &sigint_action, nullptr);
+        sigaction(SIGTERM, &sigint_action, nullptr);
+#elif defined (_WIN32)
+        auto console_ctrl_handler = +[](DWORD ctrl_type) -> BOOL {
+            return (ctrl_type == CTRL_C_EVENT) ? (signal_handler(SIGINT), true) : false;
+        };
+        SetConsoleCtrlHandler(reinterpret_cast<PHANDLER_ROUTINE>(console_ctrl_handler), true);
+#endif
+        params.abort_callback = is_interrupted;
+    }
+
     const int64_t t_main_start_us = llama_time_us();
 
     int64_t t_quantize_us = 0;
@@ -900,7 +956,16 @@ int llama_quantize(int argc, char ** argv) {
 
         if (llama_model_quantize(fname_inp.c_str(), fname_out.c_str(), &params)) {
             fprintf(stderr, "%s: failed to quantize model from '%s'\n", __func__, fname_inp.c_str());
-            return 1;
+            const int signo = interrupt_signal.load();
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
+            // ensure that a calling shell or script stops too...
+            if (signo) {
+                signal(signo, SIG_DFL);
+                raise(signo);
+            }
+#endif
+            // ...as a shell reports a process that the signal killed
+            return signo ? 128 + signo : 1;
         }
 
         t_quantize_us = llama_time_us() - t_start_us;

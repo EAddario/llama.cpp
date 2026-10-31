@@ -69,8 +69,10 @@ Advanced options:
 * `--override-kv` option to override model metadata by key in the quantized model. May be specified multiple times
 * `--target-bpw` automatically choose quant types to meet an overall bits per weight (bpw) target
 * `--target-size` automatically choose quant types to meet a file size target
-* `--state-file` file name to use or save to the bpw/size error computations; if no name is provided it defaults to `<model name>-<model hash>.bpw_state`
+* `--state-file` file name to store or load the bpw/size scores. If left unspecified it defaults to `<model name>-<hash>.bpw_state`; progress is automatically preserved upon interruptions (SIGTERM or Ctrl-C) allowing execution of the same command to resume the process
 * `--target-exclude` comma-separated list of quant types (names or ordinals) that automatic quant type selection must ignore; for use with `--target-bpw`/`--target-size`. May be specified multiple times. A state checkpoint is not written while this option is active
+
+When using `--target-bpw` or `--target-size`, any tensors specified by `--tensor-type`, `--token-embedding-type`, or `--output-tensor-type` retain their defined types, with their total size counted toward the overall target. Quantization will fail if the budget allocated to these tensors leaves insufficient capacity for the remainder of the model.
 
 ## (Optional) Convert the multimodal components
 
@@ -140,22 +142,22 @@ python convert_hf_to_gguf.py --mmproj --outfile mmproj-gemma-4-E2B-it-Q8_0.gguf 
 
 ```bash
 # quantize model targeting a specific bpw average and save the target computations to the default file. Model type is optional and can be omitted
-./llama-quantize --target-bpw 4.5678 --state-file --imatrix imatrix.gguf input-model-f32.gguf 8
+./llama-quantize --target-bpw 4.5678 --state-file --imatrix imatrix.gguf input-model-f32.gguf output-model.gguf
 ```
 
 ```bash
 # quantize model targeting a specific bpw average using the default state checkpoint (if available) and ignoring IQ2_XXS, IQ2_XS and IQ2_S types (checkpoint is not saved)
-./llama-quantize --target-bpw 4.5678 --target-exclude IQ2_XXS,IQ2_XS,IQ2_S --state-file --imatrix imatrix.gguf input-model-f32.gguf 8
+./llama-quantize --target-bpw 4.5678 --target-exclude IQ2_XXS,IQ2_XS,IQ2_S --state-file --imatrix imatrix.gguf input-model-f32.gguf output-model.gguf
 ```
 
 ```bash
 # quantize model targeting a specific bpw average reusing previous target computations in default file (e.g. input-model-8fd7a8bef0803042.bpw_state)
-./llama-quantize --target-bpw 2.345 ---state-file --imatrix imatrix.gguf input-model-f32.gguf 8
+./llama-quantize --target-bpw 2.345 --state-file --imatrix imatrix.gguf input-model-f32.gguf output-model.gguf
 ```
 
 ```bash
 # quantize model targeting a specific file size and save the target computations to a custom file.
-./llama-quantize --target-size 1.5g --state-file my-state-file.dat --imatrix imatrix.gguf input-model-f32.gguf 8
+./llama-quantize --target-size 1.5g --state-file my-state-file.dat --imatrix imatrix.gguf input-model-f32.gguf output-model.gguf
 ```
 
 ## Memory/Disk Requirements
@@ -188,12 +190,12 @@ Several quantization methods are supported. They differ in the resulting model d
 |   IQ3_S    |      3.6606 |       3.42 |                798.78 ±8.81 |               69.31 ±0.63 |
 |   IQ3_M    |      3.7628 |       3.52 |               768.70 ±13.73 |               70.15 ±0.33 |
 |   IQ4_XS   |      4.4597 |       4.17 |               771.80 ±11.38 |               77.51 ±0.20 |
-|   IQ4_NL   |      4.6818 |       4.38 |                818.55 ±9.58 |               76.71 ±0.20 |
+|   IQ4_NL   |      4.6818 |       4.38 |                806.03 ±7.07 |               76.63 ±0.28 |
 |   Q2_K_S   |      2.9697 |       2.78 |                798.91 ±6.40 |               90.01 ±0.12 |
 |    Q2_K    |      3.1593 |       2.95 |                784.45 ±7.85 |               79.85 ±0.20 |
-|   Q3_K_S   |      3.6429 |       3.41 |                752.17 ±7.94 |               71.68 ±0.22 |
+|   Q3_K_S   |      3.6429 |       3.41 |                752.17 ±7.94 |               69.84 ±0.18 |
+|   Q3_K_M   |      3.9960 |       3.74 |                783.44 ±9.92 |               71.68 ±0.22 |
 |   Q3_K_L   |      4.2979 |       4.02 |                761.17 ±7.55 |               69.38 ±0.49 |
-|   Q4_K_S   |      4.6672 |       4.36 |                818.55 ±9.58 |               76.71 ±0.20 |
 |   Q4_K_S   |      4.6672 |       4.36 |                818.55 ±9.58 |               76.71 ±0.20 |
 |   Q4_K_M   |      4.8944 |       4.58 |               821.81 ±21.44 |               71.93 ±1.52 |
 |   Q5_K_S   |      5.5704 |       5.21 |                752.52 ±0.99 |               69.53 ±0.18 |

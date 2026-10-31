@@ -7,8 +7,10 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cerrno>
 #include <cinttypes>
-#include <csignal>
+#include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <mutex>
 #include <numeric>
@@ -846,10 +848,6 @@ static size_t llama_tensor_quantize_impl(ggml_type new_type,
     return new_size;
 }
 
-static std::atomic<bool> bpw_stop{ false };
-
-static void signal_handler(int) { bpw_stop.store(true, std::memory_order_relaxed); }
-
 // Returns tensor type overrides that meet a global file size or bpw target
 static std::unordered_map<std::string, ggml_type> target_bpw_type(
     llama_model_loader & ml,
@@ -859,29 +857,18 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
     const std::unordered_map<std::string, std::vector<float>> * values_data,
     const std::unordered_map<std::string, std::vector<float>> * activations_data,
     const std::unordered_map<std::string, std::vector<float>> * statistics_data,
+    const std::vector<std::string> * stats_schema,
     const std::unordered_map<std::string, ggml_type> * locked_tensors,
     int nthread
 ) {
-    bpw_stop.store(false, std::memory_order_relaxed);
-
-    // Vector indices for statistics_data's metrics
-    enum { ENERGY = 0, MEAN = 1, ELEMENTS = 2, STDDEV = 3, SKEWNESS = 4, KURTOSIS = 5, GAIN = 6,
-           H_NORM = 7, L2_DIST = 8, COSSIM = 9, PCC = 10, COVAR = 11 };
-
-    // SIGINT/SIGTERM signal handlers
-    struct signal_scope_guard {
-        using handler_t = void (*)(int);
-        handler_t prev_int = SIG_DFL;
-        handler_t prev_term = SIG_DFL;
-        signal_scope_guard() {
-            prev_int = std::signal(SIGINT, signal_handler);
-            prev_term = std::signal(SIGTERM, signal_handler);
-        }
-        ~signal_scope_guard() {
-            std::signal(SIGINT, prev_int);
-            std::signal(SIGTERM, prev_term);
-        }
-    } signal_guard;
+    bool interrupted = false;
+    std::mutex interrupt_mutex;
+    auto poll_interrupt = [&]() {
+        if (!qs.params->abort_callback) { return false; }
+        std::lock_guard<std::mutex> lock(interrupt_mutex);
+        if (!interrupted) { interrupted = qs.params->abort_callback(qs.params->abort_callback_data); }
+        return interrupted;
+    };
 
     // GGML_TYPE scores
     struct type_scores {
@@ -1013,18 +1000,59 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
     };
 
     // DJB2 hashing algorithm
-    auto djb2_hash = [&](const uint8_t * data, const size_t n) -> uint64_t {
-        uint64_t h = 5381;
+    auto djb2_hash = [&](const uint8_t * data, const size_t n, uint64_t h = 5381) -> uint64_t {
         for (size_t i = 0; i < n; ++i) { h = (h << 5) + h + data[i]; }
         return h ? h : HASH_MAGIC;
     };
 
-    // Model ID from metadata hash
+    // Model ID from the metadata, the imatrix data and the pruned layers
     const uint64_t model_id = [&] {
         const size_t sz = gguf_get_meta_size(ml.metadata);
         std::vector<uint8_t> buf(sz);
         gguf_get_meta_data(ml.metadata, buf.data());
-        return djb2_hash(buf.data(), buf.size());
+        uint64_t h = djb2_hash(buf.data(), buf.size());
+        auto hash_bytes = [&](const void * data, const size_t n) { h = djb2_hash((const uint8_t *)data, n, h); };
+        auto hash_size = [&](const uint64_t n) { hash_bytes(& n, sizeof(n)); };
+
+        for (const auto * m : { values_data, activations_data, statistics_data }) {
+            const uint8_t present = m != nullptr;
+            hash_bytes(& present, sizeof(present));
+            if (!m) { continue; }
+
+            // the maps have no fixed order
+            std::vector<std::string> names;
+            names.reserve(m->size());
+            for (const auto & e : * m) { names.push_back(e.first); }
+            std::sort(names.begin(), names.end());
+
+            hash_size(names.size());
+            for (const auto & name : names) {
+                const std::vector<float> & v = m->at(name);
+                hash_size(name.size());
+                hash_bytes(name.data(), name.size());
+                hash_size(v.size());
+                hash_bytes(v.data(), v.size() * sizeof(float));
+            }
+        }
+
+        const uint8_t has_schema = stats_schema != nullptr;
+        hash_bytes(& has_schema, sizeof(has_schema));
+        if (stats_schema) {
+            hash_size(stats_schema->size());
+            for (const auto & name : * stats_schema) {
+                hash_size(name.size());
+                hash_bytes(name.data(), name.size());
+            }
+        }
+
+        for (const auto & [blk, num] : mapped) {
+            const int32_t b = blk;
+            hash_bytes(& b, sizeof(b));
+            hash_size(num.size());
+            hash_bytes(num.data(), num.size());
+        }
+
+        return h;
     }();
 
     std::string checkpoint_file;
@@ -1040,25 +1068,19 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         checkpoint_file += "-" + std::string(hex) + ".bpw_state";
 
         if (qs.params->state_file) {
-            const char * filename = qs.params->state_file;
-            bool is_valid = false;
-
-            if (filename[0] == '\0') { is_valid = true; }
-            else if (std::ifstream(filename, std::ios::binary).good()) { is_valid = true; }
-            else {
-                std::ofstream ofs(filename, std::ios::binary | std::ios::app);
-                if (ofs.is_open()) {
-                    is_valid = true;
-                    ofs.close();
-                    std::remove(filename);
-                }
-            }
-
-            if (is_valid) {
-                if (filename[0] != '\0') { checkpoint_file = filename; }
+            if (qs.params->state_file[0] != '\0') { checkpoint_file = qs.params->state_file; }
+            const char * fname = checkpoint_file.c_str();
+            FILE * f = std::fopen(fname, "rb");
+            if (!f && errno == ENOENT) {
+                f = std::fopen(fname, "wbx");
+                if (!f) { throw std::runtime_error(format("%s: failed to open %s: %s\n", func, fname, std::strerror(errno))); }
+                std::fclose(f);
+                if (std::remove(fname) != 0) { LLAMA_LOG_WARN("%s: failed to remove %s: %s\n", func, fname, std::strerror(errno)); }
             } else {
-                LLAMA_LOG_WARN("%s: '%s' is not a valid state file, ignoring\n", func, filename);
-                checkpoint_file = filename;
+                const bool readable = f && (std::fgetc(f) != EOF || !std::ferror(f));
+                const int err = errno;
+                if (f) { std::fclose(f); }
+                if (!readable) { throw std::runtime_error(format("%s: failed to open %s: %s\n", func, fname, std::strerror(err))); }
             }
         }
     }
@@ -1067,7 +1089,10 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
     auto save_state = [&](const std::vector<type_choice> & all_tensors) {
         const std::string tmp = checkpoint_file + ".tmp";
         std::ofstream ofs(tmp, std::ios::binary | std::ios::trunc);
-        if (!ofs) { return; }
+        if (!ofs) {
+            LLAMA_LOG_WARN("\n\t%s: failed to save progress to %s (open error)\n", func, tmp.c_str());
+            return;
+        }
         ofs.write((const char *)& STATE_MAGIC, sizeof(STATE_MAGIC));
         ofs.write((const char *)& model_id, sizeof(model_id));
         const uint64_t n = all_tensors.size();
@@ -1105,8 +1130,12 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         }
 
         std::remove(checkpoint_file.c_str());
-        std::rename(tmp.c_str(), checkpoint_file.c_str());
-        LLAMA_LOG_INFO("\t%s: saved target progress for %lu tensors to %s\n", func, all_tensors.size(), checkpoint_file.c_str());
+        if (std::rename(tmp.c_str(), checkpoint_file.c_str()) != 0) {
+            LLAMA_LOG_WARN("\n\t%s: failed to save progress to %s (rename error), kept in %s\n", func, checkpoint_file.c_str(), tmp.c_str());
+            return;
+        }
+
+        LLAMA_LOG_INFO("\t%s: saved target progress for %zu tensors to %s\n", func, all_tensors.size(), checkpoint_file.c_str());
     };
 
     // Load vector<type_choice> state from disk
@@ -1119,7 +1148,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         ifs.read((char *)& magic, sizeof(magic));
         ifs.read((char *)& id, sizeof(id));
         if (id != model_id) {
-            LLAMA_LOG_WARN("%s: invalid target state file, ignoring\n", func);
+            LLAMA_LOG_WARN("%s: state file does not match this model, imatrix or pruned layers, ignoring\n", func);
             return {};
         }
 
@@ -1145,8 +1174,9 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
             type_choice si;
             uint64_t sz = 0;
             ifs.read((char *)& sz, sizeof(sz));
-            if (sz > std::size(quant_types)) {
-                LLAMA_LOG_WARN("%s: state file candidate size exceeds limits, ignoring\n", func);
+            if (!ifs.good()) { break; }
+            if (sz == 0 || sz > std::size(quant_types)) {
+                LLAMA_LOG_WARN("%s: candidate count out of range, ignoring state file\n", func);
                 return {};
             }
             ifs.read((char *)& si.choice, sizeof(si.choice));
@@ -1162,6 +1192,11 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
                 int32_t t = 0;
                 uint64_t b = 0;
                 ifs.read((char *)& t, sizeof(t));
+                if (!ifs.good()) { break; }
+                if (std::find(std::begin(quant_types), std::end(quant_types), t) == std::end(quant_types)) {
+                    LLAMA_LOG_WARN("%s: candidate type is not in the selection pool, ignoring state file\n", func);
+                    return {};
+                }
                 cd.type = (ggml_type)t;
                 ifs.read((char *)& cd.bpw, sizeof(cd.bpw));
                 ifs.read((char *)& b, sizeof(b));
@@ -1177,25 +1212,25 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
             return {};
         }
 
-        LLAMA_LOG_INFO("\t%s: using %s (data for %lu tensors loaded)\n", func, checkpoint_file.c_str(), out.size());
+        LLAMA_LOG_INFO("\t%s: using %s (data for %zu tensors loaded)\n", func, checkpoint_file.c_str(), out.size());
         return out;
     };
 
-    // Check for user interrupt and save progress
-    auto check_signal_handler = [&](const std::vector<type_choice> & all_tensors) {
-        if (bpw_stop.load(std::memory_order_relaxed)) {
+    // Check for interruptions and try save progress
+    auto throw_if_aborted = [&](const std::vector<type_choice> & all_tensors) {
+        if (interrupted) {
             if (qs.params->state_file) {
                 if (qs.has_ignored_types) {
                     LLAMA_LOG_WARN("\n\t%s: interrupted; state checkpoint is not written while --target-exclude is active\n", func);
                 } else {
-                    LLAMA_LOG_INFO("\n\t%s: interrupted, saving progress for %lu tensors to %s\n", func, all_tensors.size(), checkpoint_file.c_str());
+                    LLAMA_LOG_INFO("\n\t%s: interrupted, saving progress for %zu tensors to %s\n", func, all_tensors.size(), checkpoint_file.c_str());
                     save_state(all_tensors);
                 }
             } else {
                 LLAMA_LOG_INFO("\n\t%s: interrupted\n", func);
             }
 
-            throw std::runtime_error("user terminated the process");
+            throw std::runtime_error("interrupted");
         }
     };
 
@@ -1482,9 +1517,27 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         return sz == req || sz == (size_t) n_per_row;
     };
 
+    // Look up stats used by CNIF
+    enum { ENERGY, H_NORM, L2_DIST, COSSIM, PCC, N_STATS };
+    const char * stat_names[N_STATS] = { "sum_sq", "h_norm", "l2_dist", "cossim", "pearson" };
+    size_t stat_pos[N_STATS] = {};
+    size_t min_stats = 0;
+    bool use_cnif = statistics_data && !statistics_data->empty();
+    for (int i = 0; use_cnif && i < N_STATS; ++i) {
+        const size_t n = stats_schema ? stats_schema->size() : 0;
+        size_t p = 0;
+        while (p < n && (* stats_schema)[p] != stat_names[i]) { ++p; }
+        if (p == n) {
+            LLAMA_LOG_WARN("%s: statistics have no %s metric, skipping CNIF; model quality may be compromised\n", func, stat_names[i]);
+            use_cnif = false;
+        }
+        stat_pos[i] = p;
+        min_stats = std::max(min_stats, p + 1);
+    }
+
     // Precompute the Centered‑Normalized Importance Factor (CNIF)
     std::unordered_map<std::string, float> cnif_scores;
-    if (statistics_data && !statistics_data->empty()) {
+    if (use_cnif) {
         struct tensor_score {
             std::string name;
             float score = 0.0f;
@@ -1571,19 +1624,19 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
 
             const std::string name = remap_imatrix(ggml_get_name(tensor), mapped);
             auto it = statistics_data->find(name);
-            if (it == statistics_data->end() || it->second.size() <= (size_t) L2_DIST) { continue; }
+            if (it == statistics_data->end() || it->second.size() < min_stats) { continue; }
 
             // Heads have no previous-layer counterpart so they stay outside the pool at cnif = 1.0
             if (tensor_name_match_token_embd(ggml_get_name(tensor)) || tensor_name_match_output_weight(ggml_get_name(tensor))) { continue; }
 
             const auto & ts = it->second;
-            const float h_norm = std::isfinite(ts[H_NORM]) ? std::clamp(ts[H_NORM], 0.0f, 100.0f) : 100.0f;
+            const float h_norm = std::isfinite(ts[stat_pos[H_NORM]]) ? std::clamp(ts[stat_pos[H_NORM]], 0.0f, 100.0f) : 100.0f;
             const float concentration = 1.0f - h_norm / 100.0f;
-            const float energy = std::isfinite(ts[ENERGY]) ? std::max(0.0f, ts[ENERGY]) : 0.0f;
-            const float l2_dist = std::isfinite(ts[L2_DIST]) ? std::max(0.0f, ts[L2_DIST]) : 0.0f;
+            const float energy = std::isfinite(ts[stat_pos[ENERGY]]) ? std::max(0.0f, ts[stat_pos[ENERGY]]) : 0.0f;
+            const float l2_dist = std::isfinite(ts[stat_pos[L2_DIST]]) ? std::max(0.0f, ts[stat_pos[L2_DIST]]) : 0.0f;
             const float rel_l2 = l2_dist / (std::sqrt(energy) + EPSILON);
             const float density = rel_l2 / (1.0f + rel_l2);
-            const float fragility = 0.5f * (corr_error(ts[COSSIM]) + corr_error(ts[PCC]));
+            const float fragility = 0.5f * (corr_error(ts[stat_pos[COSSIM]]) + corr_error(ts[stat_pos[PCC]]));
 
             const int64_t n_per_row = tensor->ne[0];
             const int64_t ne2 = tensor->ne[2] > 0 ? tensor->ne[2] : 1;
@@ -1591,6 +1644,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
             const bool has_acts = has_side_data(activations_data, name, ne2, n_per_row);
             const bool use_wce = has_vals && has_acts && is_angle_sensitive(name);
 
+            // parameters tuned for better results at low bitrates (<= 4.5 bits)
             const float score = use_wce
                 ? 0.75f * concentration + 0.15f * density + 0.10f * fragility
                 : 0.40f * concentration + 0.35f * density + 0.25f * fragility;
@@ -1982,7 +2036,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         } guard{tensor, tensor->data};
 
         const std::string name = ggml_get_name(tensor);
-        if (bpw_stop.load(std::memory_order_relaxed)) { return std::nullopt; }
+        if (poll_interrupt()) { return std::nullopt; }
 
         const std::string remapped_name = remap_imatrix(name, mapped);
 
@@ -2285,7 +2339,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         raw_errors.reserve(valid_types.size());
 
         for (ggml_type vt : valid_types) {
-            if (bpw_stop.load(std::memory_order_relaxed)) { return std::nullopt; }
+            if (poll_interrupt()) { return std::nullopt; }
             const wce_cache * ptr_ref_wce = use_wce && !ref_wce.row_sq_norm.empty() ? & ref_wce : nullptr;
             const mse_cache * ptr_ref_mse = !use_wce && !ref_mse.row_sq_norm.empty() ? & ref_mse : nullptr;
             const float bpw = (float)ggml_type_size(vt) * 8.0f / (float)ggml_blck_size(vt);
@@ -2399,7 +2453,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
                     std::vector<float> val_cache;
                     std::vector<float> act_cache;
                     while(true) {
-                        if (w_failed.load(std::memory_order_relaxed) || bpw_stop.load(std::memory_order_relaxed)) { break; }
+                        if (w_failed.load(std::memory_order_relaxed) || poll_interrupt()) { break; }
                         const size_t cur = idx.fetch_add(1);
                         if (cur >= tensors.size()) { break; }
                         if (!can_quantize(tensors[cur]->tensor)) { continue; }
@@ -2428,7 +2482,20 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         }
     }
 
-    check_signal_handler(all_tensors);
+    if (interrupted) {
+        std::unordered_set<std::string> reached;
+        for (const auto & tc : all_tensors) { reached.insert(ggml_get_name(tc.w->tensor)); }
+        for (const auto * tw : tensors) {
+            const std::string name = ggml_get_name(tw->tensor);
+            const auto it = bpw_data.find(name);
+            if (it == bpw_data.end() || reached.count(name)) { continue; }
+            type_choice tc = it->second;
+            tc.w = tw;
+            all_tensors.push_back(std::move(tc));
+        }
+    }
+
+    throw_if_aborted(all_tensors);
     if (qs.params->state_file) {
         if (qs.has_ignored_types) { LLAMA_LOG_WARN("\t%s: state checkpoint cannot be saved while --target-exclude is active\n", func); }
         else { save_state(all_tensors); }
@@ -2519,12 +2586,12 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
     if (!clamped) {
         budget_bytes = total_budget_bytes - total_fixed_bytes;
         if (!pinned_tensors.empty() && budget_bytes > max_total_bytes) {
-            LLAMA_LOG_WARN("\t%s: target %s is not reachable with current --tensor-type selection (maximum ~%s); clamping to maximum\n",
+            LLAMA_LOG_WARN("\t%s: target %s is not reachable with the pinned tensors (maximum ~%s); clamping to maximum\n",
                 func, requested.c_str(), size_str(total_fixed_bytes + max_total_bytes).c_str());
         }
     } else {
         if (total_budget_bytes >= unpinned_min_bytes) {
-            throw std::runtime_error(format("%s: target %s is not reachable with current --tensor-type selection (minimum ~%s)",
+            throw std::runtime_error(format("%s: target %s is not reachable with the pinned tensors (minimum ~%s)",
                 func, requested.c_str(), size_str(min_bytes).c_str()));
         }
 
@@ -2953,6 +3020,7 @@ static std::unordered_map<std::string, ggml_type> target_bpw_type(
         std::vector<size_t> role;
         std::vector<size_t> siblings;
         const double down_bpw = mean_bpw(expert_ffn_down, &role);
+        // mean_bpw appends so siblings gets both the gate and the up tensors
         const double gate_bpw = mean_bpw(expert_ffn_gate, &siblings);
         const double up_bpw = mean_bpw(expert_ffn_up,   &siblings);
         const double sibling_bpw = std::max(gate_bpw, up_bpw);
@@ -3156,6 +3224,8 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
     std::unordered_map<std::string, std::vector<float>> vdata;
     std::unordered_map<std::string, std::vector<float>> adata;
     std::unordered_map<std::string, std::vector<float>> sdata;
+    const std::vector<std::string> * stats_schema = nullptr;
+    std::vector<std::string> sschema;
     if (params->imatrix) {
         for (const llama_model_imatrix_data * i = params->imatrix; i->name != nullptr; i++) {
             vdata.emplace(i->name, std::vector<float>(i->data, i->data + i->size));
@@ -3193,6 +3263,10 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
     if (params->statistics) {
         for (const llama_model_imatrix_data * s = params->statistics; s->name != nullptr; s++) {
             sdata.emplace(s->name, std::vector<float>(s->data, s->data + s->size));
+        }
+        if (params->stats_schema) {
+            for (const char * const * s = params->stats_schema; * s != nullptr; s++) { sschema.emplace_back(* s); }
+            stats_schema = & sschema;
         }
 
         statistics_data = & sdata;
@@ -3403,16 +3477,37 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
                             __func__, p.pattern.c_str(), ggml_type_name(p.type));
                     }
                 }
+
+                const std::pair<const char *, ggml_type> type_flags[] = {
+                    { "--token-embedding-type", params->token_embedding_type },
+                    { "--output-tensor-type",   params->output_tensor_type },
+                };
+                for (const auto & [flag, type] : type_flags) {
+                    if (type < GGML_TYPE_COUNT && qs.ignored_types[type]) {
+                        LLAMA_LOG_WARN("%s: %s pins type %s which is ignored by --target-exclude, keeping the pinned type\n", __func__, flag, ggml_type_name(type));
+                    }
+                }
             }
 
-            // Build locked tensor type map from --tensor-type patterns
+            // Build tensor type map from --tensor-type + embedding + output flags
             std::unordered_map<std::string, ggml_type> locked_tensors;
             for (size_t i = 0; i < tensors.size(); ++i) {
                 if (!metadata[i].allows_quantization) { continue; }
                 const char * name = ggml_get_name(tensors[i]->tensor);
-                if (const ggml_type locked = tensor_type_override_for(qs, name); locked != GGML_TYPE_COUNT) {
-                    locked_tensors[name] = locked;
+                ggml_type locked = tensor_type_override_for(qs, name);
+                if (metadata[i].category == TENSOR_CATEGORY_TOKEN_EMBD) {
+                    const bool named = locked != GGML_TYPE_COUNT && std::strcmp(name, "per_layer_token_embd.weight") == 0;
+                    if (params->token_embedding_type < GGML_TYPE_COUNT && !named) {
+                        locked = params->token_embedding_type;
+                    } else if (locked == GGML_TYPE_COUNT && qs.has_tied_embeddings && params->output_tensor_type < GGML_TYPE_COUNT) {
+                        // tied embeddings take the output type, same as in llama_tensor_get_type_impl
+                        locked = params->output_tensor_type;
+                    }
+                } else if (metadata[i].category == TENSOR_CATEGORY_OUTPUT && params->output_tensor_type < GGML_TYPE_COUNT) {
+                    locked = params->output_tensor_type;
                 }
+
+                if (locked != GGML_TYPE_COUNT) { locked_tensors[name] = locked; }
             }
 
             // do not allocate budget to unused kv tensors
@@ -3424,7 +3519,7 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
 
             // get quantization type overrides targeting a given bits per weight budget
             const auto * lt = locked_tensors.empty() ? nullptr : & locked_tensors;
-            bpw_overrides = target_bpw_type(ml, qs, tensors, mapped, values_data, activations_data, statistics_data, lt, nthread);
+            bpw_overrides = target_bpw_type(ml, qs, tensors, mapped, values_data, activations_data, statistics_data, stats_schema, lt, nthread);
             for (size_t i = 0; i < tensors.size(); ++i) {
                 const std::string name = ggml_get_name(tensors[i]->tensor);
                 auto it = bpw_overrides.find(name);
@@ -3472,6 +3567,7 @@ static void llama_model_quantize_impl(const std::string & fname_inp, const std::
 
     // main loop: iterate over all weights
     for (size_t i = 0; i < tensors.size(); ++i) {
+        if (params->abort_callback && params->abort_callback(params->abort_callback_data)) { throw std::runtime_error("interrupted"); }
         const auto & weight = *tensors[i];
         const auto & tm = metadata[i];
         ggml_tensor * tensor = weight.tensor;
@@ -3659,6 +3755,7 @@ llama_model_quantize_params llama_model_quantize_default_params() {
         /*.imatrix                     =*/ nullptr,
         /*.activations                 =*/ nullptr,
         /*.statistics                  =*/ nullptr,
+        /*.stats_schema                =*/ nullptr,
         /*.kv_overrides                =*/ nullptr,
         /*.tensor_type                 =*/ nullptr,
         /*.prune_layers                =*/ nullptr,
@@ -3666,7 +3763,9 @@ llama_model_quantize_params llama_model_quantize_default_params() {
         /*.target_bpw                  =*/ -1.0f,
         /*.target_size                 =*/ -1,
         /*.state_file                  =*/ nullptr,
-        /*.target_exclude              =*/ nullptr
+        /*.target_exclude              =*/ nullptr,
+        /*.abort_callback              =*/ nullptr,
+        /*.abort_callback_data         =*/ nullptr
     };
 
     return result;
